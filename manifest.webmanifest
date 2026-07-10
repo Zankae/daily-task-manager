@@ -1,0 +1,25 @@
+{
+  "name": "Daily Task Manager",
+  "short_name": "Daily Task Manager",
+  "description": "A quiet daily task manager that plans a small list of tasks for you each day.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#15171b",
+  "theme_color": "#15171b",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Today", "short_name": "Today", "url": "./#today", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Alarms", "short_name": "Alarms", "url": "./#alarms", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+  ]
+}
