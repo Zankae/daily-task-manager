@@ -52,19 +52,24 @@ day rolls over, gym, theme and sound, backup, and the wall-device export.
 
 ## Editing a task
 
-Tapping a task opens it in place. Everything is there:
+Tapping a task opens it in place, and **it only offers what applies to that task**:
 
 | | |
 |---|---|
-| **Title, notes** | Typed straight in; saved as you type. |
-| **When** | Once (with a date), Every day, Weekly (pick days), Monthly (day of the month), or Interval (every *n* days/weeks/months, counted from the last time you did it). |
-| **Time and alarm** | A clock time, and an alarm switch that needs one. |
-| **Urgency** | Normal, Important or Urgent — shown as a quiet bar down the left edge of the row. |
+| **Title, notes** | Typed straight in, saved as you type. The notes box stays hidden until you ask for it. |
+| **How often** *(repeating)* | Every day, Weekly (pick days), Monthly (day of the month), or Interval (every *n* days/weeks/months, counted from the last time you did it). No date field — a repeating task hasn't got one. |
+| **When** *(one-off)* | A date. No frequency chooser. |
+| **Not on a day** *(Someday)* | No date, no time, no alarm, no target. A shelved task has no day for any of that to attach to. |
+| **Time and alarm** | A clock time; the alarm switch appears once there is a time for it to ring at. |
+| **Urgency** | Normal, Important or Urgent — a quiet bar down the left edge of the row. |
 | **Takes about** | Minutes, if you want the estimate. |
-| **Times a week** | Optional weekly target. The row then reads e.g. *2 of 4 this week* — this is how the gym works, with no special machinery behind it. |
+| **Times a week** | Only on a weekly or interval task. The row then reads e.g. *2 of 4 this week* — this is how the gym works, with no special machinery behind it. |
 | **Steps** | A checklist inside the task, draggable. |
 | **Project** | Which project it belongs to, if any. |
-| **Actions** | Tomorrow · Pick a day · Someday · Not today · Delete · Close. |
+| **Actions** | Only the moves that make sense from where you are: a shelved task offers *Put it on today*, not *Not today*. |
+
+Narrowing the surface never takes away control: a repeating task always offers **Make it a
+one-off instead**, and a one-off offers **Make it repeat instead**.
 
 Nothing is ever finished on your behalf. A repeating task stays; a one-off archives
 itself when completed and can be restored.

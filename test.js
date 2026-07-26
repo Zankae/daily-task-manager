@@ -326,6 +326,8 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
   eq(byTitle("Do a ten-minute rubbish check")[0].repeat.kind, "every",
     "a maintenance routine becomes an interval task");
   eq(byTitle("Do a ten-minute rubbish check")[0].repeat.unit, "week", "with its own unit");
+  eq(byTitle("Do a ten-minute rubbish check")[0].bucket, "active",
+    "and stays on days, because it is a real recurring chore, not a maybe");
 
   const dentist = byTitle("Dental examination")[0];
   eq(dentist.steps.filter(s => s.done).length, 2, "an unfinished sequence keeps its progress");
@@ -358,6 +360,14 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
   ok(s.tasks.some(t => t.title === "Go to the gym"), "including the gym");
   ok(s.tasks.filter(t => t.bucket === "someday").length >= 8, "and a stocked Someday shelf");
   ok(s.tasks.filter(t => t.bucket === "active").length >= 6, "and some active routines");
+  /* Nothing on the shelf carries a schedule: a shelved task has no day, so the
+     editor shows it no scheduling controls at all. */
+  ok(s.tasks.filter(t => t.bucket === "someday").every(t => !T.isRepeating(t)),
+    "nothing on the shelf pretends to have a schedule");
+  ok(s.tasks.filter(t => t.bucket === "someday").every(t => !t.time),
+    "or a clock time it could not honour");
+  ok(s.tasks.some(t => t.repeat.kind === "every" && t.bucket === "active"),
+    "while recurring maintenance sits on real days");
   ok(T.tasksFor(SUN).length > 0, "and today already has a list");
   ok(s.tasks.every(t => t.title.length > 0), "nothing ships untitled");
   ok(s.projects.length === 4 && s.projects.every(p => p.status === "active"),

@@ -13,7 +13,7 @@
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.0.0";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.1.0";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -225,7 +225,10 @@ function seedTasks(profile){
     mk({title:"Grocery shopping",repeat:weekly([0]),time:"22:00",minutes:60,order:ord()}),
     mk({title:"Cook after work",repeat:weekly([1]),minutes:60,order:ord(),
         notes:"May happen after midnight. It still counts as Monday."}),
-    mk({title:"Brush teeth before sleeping",repeat:daily(),minutes:3,urgency:"important",order:ord()})
+    mk({title:"Brush teeth before sleeping",repeat:daily(),minutes:3,urgency:"important",order:ord()}),
+    /* Real recurring maintenance, so these belong on days rather than the shelf. */
+    mk({title:"Check that no loose cables are on the floor",repeat:every(2,"week"),minutes:5,order:ord()}),
+    mk({title:"Vacuum the whole apartment",repeat:every(1,"month"),minutes:45,order:ord()})
   ];
   const some=[
     mk({title:"Fill one bag with obvious rubbish",minutes:15,bucket:"someday",order:ord()}),
@@ -246,10 +249,7 @@ function seedTasks(profile){
         {id:uid(),title:"Attend the eye examination",done:false},
         {id:uid(),title:"Look for suitable frames",done:false},
         {id:uid(),title:"Order the glasses",done:false},
-        {id:uid(),title:"Collect and adjust them",done:false}]}),
-    mk({title:"Check that no loose cables are on the floor",repeat:every(2,"week"),
-        bucket:"someday",minutes:5,order:ord()}),
-    mk({title:"Vacuum the whole apartment",repeat:every(1,"month"),bucket:"someday",minutes:45,order:ord()})
+        {id:uid(),title:"Collect and adjust them",done:false}]})
   ];
   return active.concat(some);
 }
@@ -431,11 +431,12 @@ function migrateV1(old){
     if(t&&rec&&rec.count)t.notes="Done "+rec.count+" time"+(rec.count===1?"":"s")+" before the rebuild.";
   });
 
-  /* Old maintenance routines are simply interval tasks. */
+  /* Old maintenance routines are simply interval tasks, and they are real
+     recurring chores, so they stay on days rather than going to the shelf. */
   const M=old.maintenance&&typeof old.maintenance==="object"?old.maintenance:{};
   Object.keys(M).forEach(id=>{
     const m=M[id];if(!m||!m.title)return;
-    s.tasks.push(newTask({title:String(m.title),bucket:"someday",start:today,
+    s.tasks.push(newTask({title:String(m.title),start:today,
       repeat:{kind:"every",days:[],dom:1,
               every:clampInt(m.n,1,365,1),
               unit:["day","week","month"].includes(m.unit)?m.unit:"week"},
@@ -781,13 +782,45 @@ function el(tag,attrs,...kids){
 function clear(n){while(n.firstChild)n.removeChild(n.firstChild);return n;}
 function byId(id){return document.getElementById(id);}
 
+/* ================= icons =================
+   Drawn, not typed. iOS renders characters like U+2699 GEAR and U+23F0 ALARM
+   CLOCK as full-colour emoji in a completely different visual language to the
+   rest of the app, and their glyph metrics sit off-centre in a button. These
+   are plain strokes that inherit currentColor and line up on the pixel grid. */
+const SVGNS="http://www.w3.org/2000/svg";
+const ICONS={
+  tick:[["path",{d:"M6.6 12.4l3.5 3.5 7.3-8"}]],
+  grip:[["path",{d:"M7 9h10M7 12.5h10M7 16h10"}]],
+  chev:[["path",{d:"M10 7.5l4.6 4.5-4.6 4.5"}]],
+  back:[["path",{d:"M14 7.5L9.4 12l4.6 4.5"}]],
+  close:[["path",{d:"M7.5 7.5l9 9M16.5 7.5l-9 9"}]],
+  bell:[["path",{d:"M12 5.2a4.3 4.3 0 00-4.3 4.3c0 3.5-1.4 4.8-1.4 4.8h11.4s-1.4-1.3-1.4-4.8A4.3 4.3 0 0012 5.2z"}],
+        ["path",{d:"M10.3 17.1a1.8 1.8 0 003.4 0"}]]
+};
+function icon(name,cls){
+  const s=document.createElementNS(SVGNS,"svg");
+  s.setAttribute("viewBox","0 0 24 24");
+  s.setAttribute("aria-hidden","true");
+  s.setAttribute("focusable","false");
+  s.setAttribute("class","icn"+(cls?" "+cls:""));
+  (ICONS[name]||[]).forEach(pair=>{
+    const n=document.createElementNS(SVGNS,pair[0]);
+    for(const k in pair[1])n.setAttribute(k,pair[1][k]);
+    s.appendChild(n);
+  });
+  return s;
+}
+function iconBtn(cls,label,onclick,name){
+  return el("button",{class:cls,"aria-label":label,onclick:onclick},icon(name||"close"));
+}
+
 function openModal(title,body,wide){
   const host=byId("modalHost");
   const box=clear(byId("modalBox"));
   box.classList.toggle("wide",!!wide);
   box.append(el("div",{class:"mhead"},
     el("h2",{text:title}),
-    el("button",{class:"x","aria-label":"Close",text:"\u00D7",onclick:closeModal})));
+    iconBtn("x","Close",closeModal)));
   box.append(el("div",{class:"mbody"},body));
   host.classList.add("open");
 }
@@ -886,8 +919,7 @@ function makeSortable(list,onDrop){
     while(s&&!s.hasAttribute("data-row"))s=s.nextElementSibling;return s;}
   return list;
 }
-function grip(){return el("div",{class:"grip","aria-hidden":"true"},
-  el("span",{text:"\u2261"}));}
+function grip(){return el("div",{class:"grip","aria-hidden":"true"},icon("grip"));}
 
 /* ================= small form pieces ================= */
 function segmented(options,value,onpick){
@@ -931,18 +963,29 @@ function timeInput(value,onchange){
 }
 
 /* ================= view state ================= */
-const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false};
+const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,notes:null};
 
-/* ================= header ================= */
+/* ================= header =================
+   The date is the app's anchor, but the second line describes whatever page is
+   actually on screen -- "8 left" while looking at Projects meant nothing. */
 function renderHeader(){
   const k=state.today;
   byId("dayTitle").textContent=longDate(k);
-  const bits=[];
-  bits.push(isWorkday(k)?"Workday":"Day off");
-  const list=tasksFor(k);
-  const left=list.filter(t=>!isDone(k,t.id)).length;
-  bits.push(left===0?"all done":left+" left");
-  byId("dayMeta").textContent=bits.join(" "+DOT+" ");
+  let meta;
+  if(ui.page==="tasks"){
+    const live=(state.tasks||[]).filter(t=>!t.archived);
+    const shelf=live.filter(t=>t.bucket==="someday").length;
+    meta=live.length-shelf+" task"+(live.length-shelf===1?"":"s")+" "+DOT+" "+shelf+" on the shelf";
+  }else if(ui.page==="projects"){
+    const n=(state.projects||[]).filter(p=>p.status==="active").length;
+    meta=n?n+" project"+(n===1?"":"s"):"No projects yet";
+  }else if(ui.page==="settings"){
+    meta="Settings";
+  }else{
+    const left=tasksFor(k).filter(t=>!isDone(k,t.id)).length;
+    meta=(isWorkday(k)?"Workday":"Day off")+" "+DOT+" "+(left===0?"all done":left+" left");
+  }
+  byId("dayMeta").textContent=meta;
 }
 
 /* ================= today ================= */
@@ -983,7 +1026,8 @@ function renderToday(){
 
   if(done.length){
     const head=el("button",{class:"disclose",onclick:()=>{ui.showDone=!ui.showDone;renderToday();}},
-      el("span",{text:(ui.showDone?"\u25BE":"\u25B8")+"  Completed today"}),
+      el("span",{class:"discIcon"+(ui.showDone?" open":"")},icon("chev")),
+      el("span",{class:"discTxt",text:"Completed today"}),
       el("span",{class:"count",text:String(done.length)}));
     root.append(head);
     if(ui.showDone){
@@ -1048,11 +1092,10 @@ function taskRow(t,opts){
         e.stopPropagation();
         if(done){uncompleteTask(t.id,k);render();}
         else{
-          const node=row;
-          node.classList.add("completing");
+          row.classList.add("completing");
           setTimeout(()=>{completeTask(t.id,k);render();},220);
         }
-      }},el("span",{text:done?"\u2713":""}));
+      }},done?icon("tick"):null);
     head.append(box);
   }else if(opts.drag!==false){
     head.append(grip());
@@ -1081,7 +1124,7 @@ function taskRow(t,opts){
     const past=opts.day&&dayMinutes(t.time)<nowDayMinutes()&&!done;
     right.append(el("span",{class:"timechip mono"+(past?" past":""),text:t.time}));
   }
-  if(t.alarm)right.append(el("span",{class:"bell",title:"Alarm",text:"\u23F0"}));
+  if(t.alarm)right.append(el("span",{class:"bell","aria-label":"Alarm set"},icon("bell")));
   if(opts.day&&opts.drag)right.append(grip());
   head.append(right);
   row.append(head);
@@ -1090,13 +1133,23 @@ function taskRow(t,opts){
   return row;
 }
 
-/* ================= the inline editor ================= */
+/* ================= the inline editor =================
+   What it offers depends on what the task actually is. A shelved task has no
+   day, so it has no clock time or alarm to set. A repeating task has no single
+   date. A one-off has no repeat rule. A weekly target only means anything on
+   something that recurs. None of those controls appear where they would mean
+   nothing -- but each kind can still be turned into another kind, so nothing
+   is locked away. */
 function taskEditor(t,k){
   const b=el("div",{class:"editor"});
   const save=()=>{saveState();};
   const redraw=()=>{saveState();render();};
+  const shelved=t.bucket==="someday";
+  const repeating=isRepeating(t);
+  const finished=isDone(state.today,t.id);
+  const onToday=!shelved&&tasksFor(state.today).some(x=>x.id===t.id);
 
-  /* --- title and notes --- */
+  /* --- title --- */
   const title=el("input",{class:"titleInput",type:"text",value:t.title,placeholder:"What is it?",
     maxlength:"140"});
   title.addEventListener("input",()=>{t.title=title.value.slice(0,140);
@@ -1104,50 +1157,76 @@ function taskEditor(t,k){
     if(node)node.textContent=t.title||"Untitled task";save();});
   b.append(title);
 
-  const notes=el("textarea",{placeholder:"Notes (optional)",rows:"2"});
-  notes.value=t.notes;
-  notes.addEventListener("input",()=>{t.notes=notes.value.slice(0,2000);save();});
-  b.append(notes);
-
-  /* --- when --- */
-  b.append(el("h3",{class:"esect",text:"When"}));
-  b.append(segmented([["once","Once"],["daily","Every day"],["weekly","Weekly"],
-                      ["monthly","Monthly"],["every","Interval"]],
-    t.repeat.kind,v=>{
-      t.repeat.kind=v;
-      if(v==="weekly"&&!t.repeat.days.length)t.repeat.days=[dowOf(k)];
-      if(v==="monthly")t.repeat.dom=keyToDate(t.date||k).getDate();
-      if(v==="once"&&!t.date)t.date=k;
-      redraw();
-    }));
-  if(t.repeat.kind==="weekly")
-    b.append(dayPills(t.repeat.days,()=>redraw()));
-  if(t.repeat.kind==="monthly")
-    b.append(field("Day of the month",numInput(t.repeat.dom,v=>{
-      t.repeat.dom=clampInt(v,1,31,1);redraw();},1,31)));
-  if(t.repeat.kind==="every"){
-    const n=numInput(t.repeat.every,v=>{t.repeat.every=clampInt(v,1,365,1);redraw();},1,365);
-    const unit=el("select",{onchange:e=>{t.repeat.unit=e.target.value;redraw();}},
-      ["day","week","month"].map(u=>el("option",{value:u,selected:t.repeat.unit===u,
-        text:u+"s"})));
-    b.append(field("Every",el("div",{class:"inline"},n,unit),
-      t.lastDone?"Last done "+shortDate(t.lastDone):"Never done yet, so it is due now"));
+  /* --- notes, kept out of the way until there is something to say --- */
+  if(t.notes||ui.notes===t.id){
+    const notes=el("textarea",{placeholder:"Notes",rows:"2"});
+    notes.value=t.notes;
+    notes.addEventListener("input",()=>{t.notes=notes.value.slice(0,2000);save();});
+    b.append(notes);
+  }else{
+    b.append(el("button",{class:"btn quiet small",text:"+ Add a note",onclick:()=>{
+      ui.notes=t.id;render();
+      const n=document.querySelector('[data-row="'+t.id+'"] textarea');
+      if(n)n.focus();
+    }}));
   }
-  if(t.repeat.kind==="once")
-    b.append(field("Date",el("input",{type:"date",value:t.date||"",
-      onchange:e=>{t.date=validKey(e.target.value)?e.target.value:null;redraw();}})));
 
-  /* --- time and alarm --- */
-  b.append(el("h3",{class:"esect",text:"Time and alarm"}));
-  const tRow=el("div",{class:"inline"},
-    timeInput(t.time,v=>{t.time=validHM(v)?v:null;redraw();}),
-    t.time?el("button",{class:"btn quiet small",text:"Clear",onclick:()=>{
-      t.time=null;t.alarm=false;redraw();}}):null);
-  b.append(field("Clock time",tRow));
-  b.append(switchRow("Alarm",t.alarm,v=>{
-    if(v&&!t.time){toast("Give it a clock time first.");render();return;}
-    t.alarm=v;redraw();
-  },t.time?"Chimes at "+t.time+" while the app is open":"Needs a clock time"));
+  /* --- when: one of three, never all of them --- */
+  if(shelved){
+    b.append(el("h3",{class:"esect",text:"Not on a day"}));
+    const bits=["It waits on the shelf until you put it on a day."];
+    if(repeating)bits.push("Set to repeat "+repeatLabel(t).toLowerCase()+" from then on.");
+    if(t.time)bits.push("Keeps its "+t.time+" time.");
+    b.append(el("p",{class:"hint",text:bits.join(" ")}));
+  }else if(repeating){
+    b.append(el("h3",{class:"esect",text:"How often"}));
+    b.append(segmented([["daily","Every day"],["weekly","Weekly"],
+                        ["monthly","Monthly"],["every","Interval"]],
+      t.repeat.kind,v=>{
+        t.repeat.kind=v;
+        if(v==="weekly"&&!t.repeat.days.length)t.repeat.days=[dowOf(k)];
+        if(v==="monthly")t.repeat.dom=keyToDate(k).getDate();
+        redraw();
+      }));
+    if(t.repeat.kind==="weekly")b.append(dayPills(t.repeat.days,()=>redraw()));
+    if(t.repeat.kind==="monthly")
+      b.append(field("Day of the month",numInput(t.repeat.dom,v=>{
+        t.repeat.dom=clampInt(v,1,31,1);redraw();},1,31)));
+    if(t.repeat.kind==="every"){
+      const n=numInput(t.repeat.every,v=>{t.repeat.every=clampInt(v,1,365,1);redraw();},1,365);
+      const unit=el("select",{onchange:e=>{t.repeat.unit=e.target.value;redraw();}},
+        ["day","week","month"].map(u=>el("option",{value:u,selected:t.repeat.unit===u,text:u+"s"})));
+      b.append(field("Every",el("div",{class:"inline"},n,unit),
+        t.lastDone?"Last done "+shortDate(t.lastDone):"Never done yet, so it is due now"));
+    }
+    b.append(el("button",{class:"btn quiet small",text:"Make it a one-off instead",onclick:()=>{
+      t.repeat.kind="once";
+      if(!t.date)t.date=state.today;
+      t.weeklyTarget=null;
+      redraw();}}));
+  }else{
+    b.append(el("h3",{class:"esect",text:"When"}));
+    b.append(field("Date",el("input",{type:"date",value:t.date||"",
+      onchange:e=>{t.date=validKey(e.target.value)?e.target.value:null;redraw();}}),
+      t.date?null:"With no date it stays out of the way until you pick one."));
+    b.append(el("button",{class:"btn quiet small",text:"Make it repeat instead",onclick:()=>{
+      t.repeat.kind="weekly";
+      if(!t.repeat.days.length)t.repeat.days=[dowOf(t.date||state.today)];
+      redraw();}}));
+  }
+
+  /* --- time and alarm: only once it belongs to a day --- */
+  if(!shelved){
+    b.append(el("h3",{class:"esect",text:t.time?"Time and alarm":"Time"}));
+    b.append(field("Clock time",el("div",{class:"inline"},
+      timeInput(t.time,v=>{t.time=validHM(v)?v:null;if(!t.time)t.alarm=false;redraw();}),
+      t.time?el("button",{class:"btn quiet small",text:"Clear",onclick:()=>{
+        t.time=null;t.alarm=false;redraw();}}):null)));
+    /* No dead switch: the alarm appears once there is a time for it to ring at. */
+    if(t.time)
+      b.append(switchRow("Alarm",t.alarm,v=>{t.alarm=v;redraw();},
+        "Chimes at "+t.time+", but only while the app is open"));
+  }
 
   /* --- urgency and size --- */
   b.append(el("h3",{class:"esect",text:"Urgency"}));
@@ -1156,34 +1235,40 @@ function taskEditor(t,k){
   b.append(field("Takes about",el("div",{class:"inline"},
     numInput(t.minutes,v=>{t.minutes=v===""?null:clampInt(v,1,1440,null);save();},1,1440),
     el("span",{class:"unit",text:"minutes"}))));
-  b.append(field("Times a week",el("div",{class:"inline"},
-    numInput(t.weeklyTarget,v=>{t.weeklyTarget=v===""?null:clampInt(v,1,14,null);redraw();},1,14),
-    el("span",{class:"unit",text:t.weeklyTarget?doneThisWeek(t,k)+" done this week":"optional"}))));
+  /* A weekly target only means something on something that recurs. */
+  if(!shelved&&(t.repeat.kind==="weekly"||t.repeat.kind==="every"))
+    b.append(field("Times a week",el("div",{class:"inline"},
+      numInput(t.weeklyTarget,v=>{t.weeklyTarget=v===""?null:clampInt(v,1,14,null);redraw();},1,14),
+      el("span",{class:"unit",text:t.weeklyTarget?doneThisWeek(t,k)+" done this week":"optional"}))));
 
   /* --- steps --- */
-  b.append(el("h3",{class:"esect",text:"Steps"}));
-  const steps=el("div",{class:"steps"});
-  (t.steps||[]).forEach(s=>{
-    steps.append(el("div",{class:"step","data-row":s.id},
-      grip(),
-      el("button",{class:"check tiny"+(s.done?" on":""),"aria-label":"Toggle step",
-        onclick:()=>{s.done=!s.done;redraw();}},el("span",{text:s.done?"\u2713":""})),
-      el("input",{type:"text",value:s.title,placeholder:"Step",
-        oninput:e=>{s.title=e.target.value.slice(0,160);save();}}),
-      el("button",{class:"x",text:"\u00D7","aria-label":"Remove step",onclick:()=>{
-        t.steps=t.steps.filter(x=>x.id!==s.id);redraw();}})));
-  });
-  makeSortable(steps,ids=>{
-    const pos={};ids.forEach((id,i)=>{pos[id]=i;});
-    t.steps.sort((a,b2)=>(pos[a.id]===undefined?99:pos[a.id])-(pos[b2.id]===undefined?99:pos[b2.id]));
-    saveState();
-  });
-  b.append(steps);
-  b.append(el("button",{class:"btn quiet small",text:"+ Add step",onclick:()=>{
-    t.steps.push(sanitizeStep({title:""}));redraw();
-    const inputs=document.querySelectorAll('[data-row="'+t.id+'"] .step input');
-    if(inputs.length)inputs[inputs.length-1].focus();
-  }}));
+  const hasSteps=(t.steps||[]).length>0;
+  if(hasSteps){
+    b.append(el("h3",{class:"esect",text:"Steps"}));
+    const steps=el("div",{class:"steps"});
+    t.steps.forEach(s=>{
+      steps.append(el("div",{class:"step","data-row":s.id},
+        grip(),
+        el("button",{class:"check tiny"+(s.done?" on":""),"aria-label":"Toggle step",
+          onclick:()=>{s.done=!s.done;redraw();}},s.done?icon("tick"):null),
+        el("input",{type:"text",value:s.title,placeholder:"Step",
+          oninput:e=>{s.title=e.target.value.slice(0,160);save();}}),
+        iconBtn("x","Remove step",()=>{
+          t.steps=t.steps.filter(x=>x.id!==s.id);redraw();})));
+    });
+    makeSortable(steps,ids=>{
+      const pos={};ids.forEach((id,i)=>{pos[id]=i;});
+      t.steps.sort((a,b2)=>(pos[a.id]===undefined?99:pos[a.id])-(pos[b2.id]===undefined?99:pos[b2.id]));
+      saveState();
+    });
+    b.append(steps);
+  }
+  b.append(el("button",{class:"btn quiet small",text:hasSteps?"+ Add step":"+ Break it into steps",
+    onclick:()=>{
+      t.steps.push(sanitizeStep({title:""}));redraw();
+      const inputs=document.querySelectorAll('[data-row="'+t.id+'"] .step input');
+      if(inputs.length)inputs[inputs.length-1].focus();
+    }}));
 
   /* --- project link --- */
   const projects=(state.projects||[]).filter(p=>p.status==="active");
@@ -1195,24 +1280,31 @@ function taskEditor(t,k){
     b.append(field("Belongs to",sel));
   }
 
-  /* --- actions --- */
-  b.append(el("div",{class:"eactions"},
-    el("button",{class:"btn",text:"Tomorrow",onclick:()=>{
-      putOnDay(t.id,addDays(k,1));ui.open=null;render();toast("Moved to tomorrow.");}}),
-    el("button",{class:"btn",text:"Pick a day",onclick:()=>pickDay(t,k)}),
-    t.bucket==="someday"
-      ? el("button",{class:"btn",text:"Move to today",onclick:()=>{
-          putOnDay(t.id,state.today);ui.open=null;ui.page="today";render();toast("On today's list.");}})
-      : el("button",{class:"btn",text:"Someday",onclick:()=>{
-          toSomeday(t.id);ui.open=null;render();toast("Moved to Someday.");}}),
-    (t.bucket!=="someday"&&!isDone(k,t.id))
-      ? el("button",{class:"btn quiet",text:"Not today",onclick:()=>{
-          skipToday(t.id);ui.open=null;render();}}) : null,
-    el("button",{class:"btn danger",text:"Delete",onclick:()=>{
-      confirmBox("Delete this task?",t.title||"Untitled task",
-        [{text:"Delete",kind:"danger",fn:()=>{deleteTask(t.id);ui.open=null;render();}},
-         {text:"Cancel",kind:"quiet"}]);}}),
-    el("button",{class:"btn primary",text:"Close",onclick:()=>{ui.open=null;render();}})));
+  /* --- actions: only the moves that make sense from here --- */
+  const acts=el("div",{class:"eactions"});
+  if(finished){
+    acts.append(el("span",{class:"hint",text:"Done today."}));
+  }else if(shelved){
+    acts.append(el("button",{class:"btn",text:"Put it on today",onclick:()=>{
+      putOnDay(t.id,state.today);ui.open=null;ui.page="today";render();
+      toast("On today's list.");}}));
+    acts.append(el("button",{class:"btn",text:"Pick a day",onclick:()=>pickDay(t,k)}));
+  }else{
+    if(onToday)acts.append(el("button",{class:"btn",text:"Tomorrow",onclick:()=>{
+      putOnDay(t.id,addDays(state.today,1));ui.open=null;render();toast("Moved to tomorrow.");}}));
+    acts.append(el("button",{class:"btn",text:"Pick a day",onclick:()=>pickDay(t,k)}));
+    if(onToday)acts.append(el("button",{class:"btn quiet",text:"Not today",onclick:()=>{
+      skipToday(t.id);ui.open=null;render();}}));
+    acts.append(el("button",{class:"btn",text:"Someday",onclick:()=>{
+      toSomeday(t.id);ui.open=null;render();toast("Moved to Someday.");}}));
+  }
+  acts.append(el("button",{class:"btn danger",text:"Delete",onclick:()=>{
+    confirmBox("Delete this task?",t.title||"Untitled task",
+      [{text:"Delete",kind:"danger",fn:()=>{deleteTask(t.id);ui.open=null;render();}},
+       {text:"Cancel",kind:"quiet"}]);}}));
+  acts.append(el("button",{class:"btn primary",text:"Close",onclick:()=>{
+    ui.open=null;render();}}));
+  b.append(acts);
   return b;
 }
 function pickDay(t,k){
@@ -1289,8 +1381,7 @@ function renderTasks(){
         el("span",{class:"small",text:t.lastDone?shortDate(t.lastDone):""}),
         el("button",{class:"btn quiet small",text:"Restore",onclick:()=>{
           t.archived=false;if(!isRepeating(t))t.date=state.today;saveState();render();}}),
-        el("button",{class:"x",text:"\u00D7","aria-label":"Delete",onclick:()=>{
-          deleteTask(t.id);render();}})));
+        iconBtn("x","Delete",()=>{deleteTask(t.id);render();})));
     });
     root.append(box);
   }
@@ -1322,7 +1413,7 @@ function renderProjects(){
             el("div",{class:"tsub",text:projectNext(p)?"Next: "+projectNext(p):"No steps yet"})),
           el("div",{class:"tright"},
             total?el("span",{class:"timechip mono",text:done+"/"+total}):null,
-            el("span",{class:"chev",text:"\u203A"})))));
+            el("span",{class:"chev"},icon("chev"))))));
     });
     makeSortable(holder,ids=>{
       ids.forEach((id,i)=>{const p=findProject(id);if(p)p.order=(i+1)*10;});
@@ -1347,11 +1438,11 @@ function renderProjects(){
         el("span",{class:"atxt",text:p.name||"Untitled"}),
         el("button",{class:"btn quiet small",text:"Reopen",onclick:()=>{
           p.status="active";saveState();render();}}),
-        el("button",{class:"x",text:"\u00D7","aria-label":"Delete",onclick:()=>{
+        iconBtn("x","Delete",()=>{
           confirmBox("Delete this project?",p.name,[
             {text:"Delete",kind:"danger",fn:()=>{
               state.projects=state.projects.filter(x=>x.id!==p.id);saveState();render();}},
-            {text:"Cancel",kind:"quiet"}]);}})));
+            {text:"Cancel",kind:"quiet"}]);})));
     });
     root.append(box);
   }
@@ -1360,8 +1451,8 @@ function projectDetail(p){
   const wrap=el("div",{});
   const save=()=>saveState();
   const redraw=()=>{saveState();render();};
-  wrap.append(el("button",{class:"back",text:"\u2039  All projects",onclick:()=>{
-    ui.project=null;render();}}));
+  wrap.append(el("button",{class:"back",onclick:()=>{ui.project=null;render();}},
+    icon("back"),el("span",{text:"All projects"})));
 
   const card=el("div",{class:"card"});
   const name=el("input",{class:"titleInput big",type:"text",value:p.name,
@@ -1395,8 +1486,8 @@ function projectDetail(p){
             projectId:p.id,notes:"From project: "+p.name});
           ui.page="today";ui.open=t.id;render();
           toast("Added to today.");}}),
-        el("button",{class:"x",text:"\u00D7","aria-label":"Remove step",onclick:()=>{
-          p.steps=p.steps.filter(x=>x.id!==s.id);redraw();}}))));
+        iconBtn("x","Remove step",()=>{
+          p.steps=p.steps.filter(x=>x.id!==s.id);redraw();}))));
   });
   makeSortable(steps,ids=>{
     const pos={};ids.forEach((id,i)=>{pos[id]=i;});
@@ -1439,8 +1530,8 @@ function renderSettings(){
   const save=()=>saveState();
   const redraw=()=>{saveState();render();};
 
-  root.append(el("button",{class:"back",text:"\u2039  Done",onclick:()=>{
-    ui.page="today";render();}}));
+  root.append(el("button",{class:"back",onclick:()=>{ui.page="today";render();}},
+    icon("back"),el("span",{text:"Done"})));
 
   /* --- work --- */
   root.append(el("h2",{class:"sect",text:"Work"}));
@@ -1572,6 +1663,7 @@ function applyTheme(){
 }
 function render(){
   ensureToday();
+  if(ui.notes&&ui.notes!==ui.open)ui.notes=null;
   renderHeader();
   ["today","tasks","projects","settings"].forEach(n=>{
     byId("page-"+n).classList.toggle("hidden",ui.page!==n);});
@@ -1617,6 +1709,34 @@ function pageFromHash(){
   return ["today","tasks","projects","settings"].includes(h)?h:null;
 }
 
+/* ================= behave like an app, not a page =================
+   Three layers, because iOS honours different ones in Safari and in an
+   installed web app: the viewport meta, touch-action in CSS, and these. Safari
+   pinch-zoom arrives as its own gesture events, and the long-press callout
+   ("Copy / Look Up / Translate") comes through contextmenu. */
+function lockDownGestures(){
+  const stop=e=>{e.preventDefault();};
+  ["gesturestart","gesturechange","gestureend"].forEach(t=>{
+    document.addEventListener(t,stop,{passive:false});
+  });
+  document.addEventListener("touchmove",e=>{
+    if(e.touches&&e.touches.length>1)e.preventDefault();
+  },{passive:false});
+  document.addEventListener("contextmenu",e=>{
+    /* Still allow it inside a field, where selecting text is the point. */
+    const tag=e.target&&e.target.tagName;
+    if(tag==="INPUT"||tag==="TEXTAREA")return;
+    e.preventDefault();
+  });
+  /* Double-tap to zoom, for the older WebKit that ignores touch-action. */
+  let lastTap=0;
+  document.addEventListener("touchend",e=>{
+    const now=Date.now();
+    if(now-lastTap<320&&e.cancelable)e.preventDefault();
+    lastTap=now;
+  },{passive:false});
+}
+
 /* ================= boot ================= */
 function boot(){
   state=loadState();
@@ -1631,6 +1751,7 @@ function boot(){
     b.addEventListener("click",()=>goto(b.getAttribute("data-page")));});
   byId("gear").addEventListener("click",()=>goto("settings"));
   document.querySelector("#modalHost .veil").addEventListener("click",closeModal);
+  lockDownGestures();
   if(!state.profile.setupComplete)showSetup();
   window.addEventListener("hashchange",()=>{const p=pageFromHash();if(p)goto(p);});
   registerServiceWorker();
@@ -1665,7 +1786,7 @@ if(typeof module!=="undefined"&&module.exports){
     dueOn,repeatLabel,isRepeating,tasksFor,dayRec,defaultDaySort,
     personalDayKey,dayMinutes,workTimes,isWorkday,ensureToday,
     completeTask,uncompleteTask,skipToday,putOnDay,toSomeday,deleteTask,addTask,
-    doneThisWeek,alarmSchedule,makeBackup,readBackup,backupDue,
+    doneThisWeek,alarmSchedule,makeBackup,readBackup,backupDue,icon,ICONS,ui,
     parseHM,fmtHM,dateKey,addDays,daysBetween,weekKeyOf,validHM,validKey,clampInt,
     pageFromHash,
     render:typeof render==="function"?render:null

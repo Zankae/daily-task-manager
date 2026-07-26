@@ -165,6 +165,8 @@ const body = new N("body");
 const doc = {
   readyState: "complete", documentElement: documentEl, body: body, hidden: false,
   createElement: t => new N(t),
+  /* Icons are real SVG nodes, so the namespace form has to exist too. */
+  createElementNS: (ns, t) => { const n = new N(t); n.namespaceURI = ns; return n; },
   createTextNode: t => ({ nodeType: 3, text: String(t) }),
   getElementById: id => ids[id] || null,
   querySelector: s => body.querySelector(s),
@@ -266,62 +268,82 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   title.fire("input");
   eq(task.title, "Brush teeth properly", "typing edits the real task at once");
 
-  /* when */
-  ok(ed.textContent.includes("When"), "the editor covers when it happens");
-  btn(ed, "Weekly").fire("click");
-  eq(task.repeat.kind, "weekly", "the repeat can be changed in the task");
-  open = rowFor("page-today", "Brush teeth properly");
-  ok(open.querySelector(".pills"), "weekly reveals the day picker");
-  const pills = open.querySelectorAll(".pill");
+  /* --- notes stay out of the way until asked for --- */
+  ok(!ed.querySelector("textarea"), "an empty task shows no notes box");
+  btn(ed, "+ Add a note").fire("click");
+  const noteBox = rowFor("page-today", "Brush teeth properly").querySelector("textarea");
+  ok(!!noteBox, "asking for a note reveals the box");
+  noteBox.value = "floss too";
+  noteBox.fire("input");
+  eq(task.title === "Brush teeth properly" && task.notes, "floss too", "which writes to the task");
+
+  /* --- when: a repeating task is offered frequencies, never a single date --- */
+  const ed2 = () => rowFor("page-today", "Brush teeth properly").querySelector(".editor");
+  ok(ed2().textContent.includes("How often"), "a repeating task asks how often");
+  ok(!btn(ed2(), "Once"), "and is not offered a one-off date option");
+  ok(!ed2().querySelectorAll("input").some(i => i.getAttribute("type") === "date"),
+    "so there is no date field on it at all");
+  btn(ed2(), "Weekly").fire("click");
+  eq(task.repeat.kind, "weekly", "the frequency can be changed in the task");
+  ok(ed2().querySelector(".pills"), "weekly reveals the day picker");
+  const pills = ed2().querySelectorAll(".pill");
   const before = task.repeat.days.slice();
   pills[3].fire("click");
   ok(task.repeat.days.length !== before.length, "tapping a day changes the schedule");
-  btn(open.querySelector(".editor"), "Every day").fire("click");
-  eq(task.repeat.kind, "daily", "and back again");
+  ok(ed2().textContent.includes("Times a week"), "a weekly task can carry a weekly target");
+  btn(ed2(), "Monthly").fire("click");
+  eq(task.repeat.kind, "monthly", "monthly is offered");
+  ok(ed2().textContent.includes("Day of the month"), "with the day of the month");
+  ok(!ed2().textContent.includes("Times a week"),
+    "but a monthly task is not asked for a weekly target");
+  btn(ed2(), "Every day").fire("click");
+  eq(task.repeat.kind, "daily", "and back to daily");
 
-  /* time and alarm -- the old Alarms page, now inside the task */
-  open = rowFor("page-today", "Brush teeth properly");
-  let e2 = open.querySelector(".editor");
-  ok(e2.textContent.includes("Alarm"), "the alarm lives in the task");
-  const sw = e2.querySelector(".switch input");
-  sw.checked = true;
-  sw.fire("change");
-  eq(task.alarm, false, "an alarm is refused until there is a clock time");
-  ok($("toast").textContent.includes("clock time"), "and says why");
-  const timeInp = e2.querySelectorAll("input").find(i => i.getAttribute("type") === "time");
+  /* --- a repeating task can still become a one-off, and back --- */
+  btn(ed2(), "Make it a one-off instead").fire("click");
+  eq(task.repeat.kind, "once", "a repeating task can be turned into a one-off");
+  ok(ed2().querySelectorAll("input").some(i => i.getAttribute("type") === "date"),
+    "which then has a date field");
+  ok(!ed2().textContent.includes("How often"), "and no frequency chooser");
+  btn(ed2(), "Make it repeat instead").fire("click");
+  eq(task.repeat.kind, "weekly", "and it can be turned back into a repeating task");
+  btn(ed2(), "Every day").fire("click");
+
+  /* --- time and alarm: the old Alarms page, now inside the task --- */
+  ok(!ed2().querySelector(".switch"), "no alarm switch until there is a time to ring at");
+  const timeInp = ed2().querySelectorAll("input").find(i => i.getAttribute("type") === "time");
   timeInp.value = "07:30";
   timeInp.fire("change");
   eq(task.time, "07:30", "a clock time can be set in the task");
-  e2 = rowFor("page-today", "Brush teeth properly").querySelector(".editor");
-  const sw2 = e2.querySelector(".switch input");
-  sw2.checked = true;
-  sw2.fire("change");
-  eq(task.alarm, true, "then the alarm can be armed");
+  const sw = ed2().querySelector(".switch input");
+  ok(!!sw, "then the alarm switch appears");
+  sw.checked = true;
+  sw.fire("change");
+  eq(task.alarm, true, "and can be armed");
+  ok(rowFor("page-today", "Brush teeth properly").querySelector(".bell"),
+    "the row shows an alarm marker");
   ok(rowFor("page-today", "Brush teeth properly").textContent.includes("07:30"),
-    "and the row shows the time");
+    "and the time");
 
-  /* urgency -- the old priority page, now inside the task */
-  e2 = rowFor("page-today", "Brush teeth properly").querySelector(".editor");
-  btn(e2, "Urgent").fire("click");
+  /* --- urgency: the old priority table, now inside the task --- */
+  btn(ed2(), "Urgent").fire("click");
   eq(task.urgency, "urgent", "urgency is set on the task");
   ok(rowFor("page-today", "Brush teeth properly").classList.contains("u-urgent"),
     "and shows on the row");
 
-  /* steps */
-  e2 = rowFor("page-today", "Brush teeth properly").querySelector(".editor");
-  btn(e2, "+ Add step").fire("click");
+  /* --- steps --- */
+  btn(ed2(), "+ Break it into steps").fire("click");
   eq(task.steps.length, 1, "a step can be added");
-  e2 = rowFor("page-today", "Brush teeth properly").querySelector(".editor");
-  const stepInp = e2.querySelector(".step").querySelector("input");
+  const stepInp = ed2().querySelector(".step").querySelector("input");
   stepInp.value = "Floss first";
   stepInp.fire("input");
   eq(task.steps[0].title, "Floss first", "and named");
-  e2.querySelector(".step").querySelector(".check").fire("click");
+  ed2().querySelector(".step").querySelector(".check").fire("click");
   ok(task.steps[0].done, "and ticked off");
+  ok(btn(ed2(), "+ Add step"), "further steps can follow");
 
   /* closing */
-  e2 = rowFor("page-today", "Brush teeth properly").querySelector(".editor");
-  btn(e2, "Close").fire("click");
+  btn(ed2(), "Close").fire("click");
   ok(!rowFor("page-today", "Brush teeth properly").querySelector(".editor"),
     "Close collapses the row again");
 
@@ -378,9 +400,34 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   dent.querySelector(".tmid").fire("click");
   const dentT = state.tasks.find(t => t.title === "Dental examination");
   eq(dentT.steps.length, 4, "which kept its steps as an ordinary checklist");
-  btn(rowFor("page-tasks", "Dental examination").querySelector(".editor"), "Move to today").fire("click");
+
+  /* --- a shelved task is offered nothing that needs a day --- */
+  const shelfEd = () => rowFor("page-tasks", "Dental examination").querySelector(".editor");
+  ok(shelfEd().textContent.includes("Not on a day"), "a shelved task says it has no day");
+  ok(!shelfEd().textContent.includes("How often"), "and is not asked how often it repeats");
+  ok(!shelfEd().querySelectorAll("input").some(i => i.getAttribute("type") === "date"),
+    "nor given a date field");
+  ok(!shelfEd().querySelectorAll("input").some(i => i.getAttribute("type") === "time"),
+    "nor a clock time, which would have nothing to attach to");
+  ok(!shelfEd().querySelector(".switch"), "nor an alarm");
+  ok(!shelfEd().textContent.includes("Times a week"), "nor a weekly target");
+  ok(shelfEd().textContent.includes("Urgency"), "but urgency still applies");
+  ok(!btn(shelfEd(), "Not today"), "and it cannot be skipped from a day it is not on");
+  ok(!btn(shelfEd(), "Tomorrow"), "or pushed to tomorrow");
+  ok(btn(shelfEd(), "Pick a day"), "it can be given a day");
+
+  btn(shelfEd(), "Put it on today").fire("click");
   eq(dentT.bucket, "active", "and can be moved to today in one tap");
   ok($("page-today").textContent.includes("Dental examination"), "landing on Today");
+  /* now that it has a day, the timing controls are there */
+  const nowEd = () => rowFor("page-today", "Dental examination").querySelector(".editor");
+  rowFor("page-today", "Dental examination").querySelector(".tmid").fire("click");
+  ok(nowEd().querySelectorAll("input").some(i => i.getAttribute("type") === "time"),
+    "a task on a day can be given a clock time");
+  ok(btn(nowEd(), "Tomorrow"), "and pushed to tomorrow");
+  ok(btn(nowEd(), "Not today"), "or skipped");
+  ok(btn(nowEd(), "Someday"), "or put back on the shelf");
+  btn(nowEd(), "Close").fire("click");
 
   /* ================= projects ================= */
   tab("projects").fire("click");
@@ -451,7 +498,7 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   eq(documentEl.attrs["data-theme"], "light", "the theme switches");
   btn($("page-settings"), "Dark").fire("click");
   eq(documentEl.attrs["data-theme"], "dark", "and back");
-  btn($("page-settings"), "‹  Done").fire("click");
+  $("page-settings").querySelector(".back").fire("click");
   ok(!$("page-today").classList.contains("hidden"), "Done returns to Today");
 
   /* ================= destructive actions ask first ================= */
@@ -469,6 +516,42 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   btn(again.querySelector(".editor"), "Delete").fire("click");
   btn($("modalHost"), "Delete").fire("click");
   ok(!state.tasks.some(t => t.id === vid), "confirming deletes it");
+
+  /* ================= it must look drawn, not typed =================
+     Characters like U+2699 GEAR and U+23F0 ALARM CLOCK come out as colour
+     emoji on iOS, in a different visual language and off-centre in a button.
+     The static markup is pwatest's job; these are the icons built in script. */
+  tab("today").fire("click");
+  const svgIn = node => !!node && node.querySelectorAll("svg").length > 0;
+  ok(svgIn($("page-today").querySelector(".grip")), "the drag grips are drawn icons");
+  const undone = $("page-today").querySelectorAll(".task").find(r => !r.className.includes("done"));
+  undone.querySelector(".check").fire("click");
+  await sleep(300);
+  let tickRow = $("page-today").querySelectorAll(".task").find(r => r.className.includes("done"));
+  if (!tickRow) {
+    btnHas($("page-today"), "Completed today").fire("click");
+    tickRow = $("page-today").querySelectorAll(".task").find(r => r.className.includes("done"));
+  }
+  ok(svgIn(tickRow.querySelector(".check")), "so is the completion tick");
+  tickRow.querySelector(".check").fire("click");
+
+  const EMOJI = /[←-⇿⌀-⏿■-➿⬀-⯿️]/;
+  ["today", "tasks", "projects", "settings"].forEach(page => {
+    if (page === "settings") $("gear").fire("click"); else tab(page).fire("click");
+    const hit = EMOJI.exec($("page-" + page).textContent);
+    ok(!hit, "no symbol characters rendered on " + page + (hit ? " (found U+" +
+      hit[0].codePointAt(0).toString(16).toUpperCase() + ")" : ""));
+  });
+
+  /* ================= the header describes the page it is on ================= */
+  tab("today").fire("click");
+  ok(/Workday|Day off/.test($("dayMeta").textContent), "Today says what kind of day it is");
+  tab("tasks").fire("click");
+  ok(/on the shelf/.test($("dayMeta").textContent), "Tasks counts the shelf instead");
+  tab("projects").fire("click");
+  ok(/project/.test($("dayMeta").textContent), "Projects counts projects");
+  $("gear").fire("click");
+  eq($("dayMeta").textContent, "Settings", "and Settings just says so");
 
   /* ================= nothing was lost to storage ================= */
   ok(store[T.LS_KEY], "state is written to localStorage");

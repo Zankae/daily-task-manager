@@ -69,6 +69,28 @@ Without a version bump, browsers keep serving the cached old app.
 - **No external requests.** No CDNs, fonts, analytics. It must work with the network off.
 - **No streaks, points, scores, guilt or red warnings.** A deliberate constraint, not an
   oversight. Urgency is a quiet amber bar, never a red alert.
+- **It must feel like an app, not a page.** Three things keep it that way, and all three
+  are needed because iOS honours different ones in Safari and in an installed web app:
+  `user-scalable=no` with the scale pinned in the viewport meta, `touch-action:pan-y` in
+  CSS, and `lockDownGestures()` for Safari's own pinch gesture events, the long-press
+  callout, and double-tap zoom. Body text is `user-select:none` with
+  `-webkit-touch-callout:none`; `input` and `textarea` opt back in, because selecting
+  text there is the point. `pwatest.js` guards every one of these.
+- **Icons are drawn, never typed.** iOS renders characters like U+2699 GEAR and U+23F0
+  ALARM CLOCK as full-colour emoji from an entirely different design language, sitting
+  off-centre in their box. Every icon is inline SVG: `ICONS` plus `icon(name)` in script,
+  and literal `<svg>` in the shell for the gear and the three tabs. Both test suites fail
+  if a symbol character reappears in the markup or on a rendered page.
+- **Buttons need `-webkit-appearance:none`.** iOS draws its own push-button box with its
+  own padding and ignores `width`/`height`, which is what turned the completion circles
+  into ellipses. `.check` additionally pins `min`/`max` width and height and
+  `aspect-ratio:1/1`.
+- **The editor shows only what applies.** A shelved task has no day, so it is offered no
+  date, no clock time, no alarm and no weekly target. A repeating task has no single
+  date; a one-off has no frequency; a weekly target only appears on a weekly or interval
+  repeat. Every kind still carries an explicit "make it a one-off / make it repeat"
+  escape hatch, so narrowing the surface never takes control away. Derive this from the
+  task itself (`bucket`, `repeat.kind`), never from which tab happens to be open.
 - **Never claim to be a reliable alarm.** It can chime only while the page is open.
 - **`localStorage` is the only store**, key `dailyTaskManagerV2`, `schemaVersion: 2`. Any
   new field needs a default in `defaultState()` *and* sanitising in `validateState()`,
@@ -100,6 +122,10 @@ Without a version bump, browsers keep serving the cached old app.
 - **Rendering** is full-redraw per page (`render()`), which is cheap at this size. The one
   rule: never rebuild a list while a task is open, or the keyboard is taken away
   mid-sentence — see the interval in `boot()`.
+- **The target is one device**: a 3rd-generation iPad Pro 12.9", usually in landscape, so
+  1366x1024. Check work there. The whole editor fits on screen in that space and should
+  stay that way; it was 1089px tall before it became contextual, which meant scrolling to
+  reach the buttons.
 - **`makeSortable(list, onDrop)`** is pointer-event based, because HTML5 drag-and-drop does
   not work with a finger on iOS. It reads live positions from `getBoundingClientRect`, so
   **the dragged row must not have a CSS `transition` on `transform`** — an animated
