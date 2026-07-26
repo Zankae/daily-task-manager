@@ -1,125 +1,155 @@
 # Daily Task Manager
 
-A quiet daily task manager that plans a small list of tasks for you each day. You open it once after waking, do the tasks, check them off, and that's it. It knows your work schedule, your gym days, your fixed routines, and the things you're working to fix — and it decides what belongs on today's list so you don't have to.
+A quiet daily task manager for one person on one iPad. It shows what is on today,
+lets you change anything by tapping it, and stays out of the way otherwise.
 
-The application is a small static PWA with no framework, package manager, account, subscription, or cloud backend. There is no build step. `index.html` contains the interface and application logic; the manifest, service worker, and icons must be hosted beside it for installation and offline use.
-
----
-
-## How to use it
-
-**First time.** When you open the app it asks you to check a short list of values: your shift times, commute times, preparation time, your four gym days, and how many tasks you want per day. Everything is pre-filled — just adjust what's wrong and tap **Start using Daily Task Manager**.
-
-**Every day after that:**
-
-1. Open the app once after waking. Today's list is already there.
-2. On workdays, the top of the page shows your calculated times: when to be out of bed, when to start getting ready, and when to leave home. These are computed from your shift start, commute, parking, preparation time, and arrival margin.
-3. Do the tasks. Tap the checkbox when one is done — it moves into the collapsed "Completed today" section.
-4. Tap a task's text (not the checkbox) to see more options: *I cannot do this today*, *Move to another day*, *Make this task smaller*, and — for recovery tasks — *This problem is resolved*.
-5. Optionally glance at it once more before sleeping (the "Brush teeth before sleeping" task lives at the bottom of the list).
-
-A new list is created automatically when your **personal day** begins.
-
-**The personal day.** Because your schedule crosses midnight, the day does not reset at 00:00. By default it resets at **14:00**. Cooking after your Monday shift at 00:30 still counts as Monday, and a gym session after midnight still belongs to the day it was planned for. You can change the reset time in Profile.
-
-**Gym.** Four sessions per week are required. On a gym day the gym task appears prominently and is never replaced by a creative-project task. You can mark it completed, mark it missed, or move it to another day *in the same week*. The header always shows your weekly count, e.g. "2 of 4 gym".
-
-**Projects.** On the Projects page, exactly one project can be **Primary** — that's the only one the app suggests work on. One more can be Secondary; the rest are Paused or Stored. Completing a project stops its tasks; you can reactivate it later.
-
-**Profile changes and today’s list.** Changes to workdays, gym days, task amount, enabled life areas, or fixed schedule values are used for newly generated days. To apply those changes immediately, use **Regenerate today** on the Today page; completed items are kept.
+The application is a small static PWA: no framework, no package manager, no account,
+no cloud, no build step beyond splicing one file into another. `index.html` contains
+the whole interface and all the logic; the manifest, service worker and icons must be
+hosted beside it for installation and offline use.
 
 ---
 
-## Done vs. Finished
+## The one idea
 
-This is the most important idea in the app.
+**Everything about a task lives in the task.** Its clock time, its alarm, its urgency,
+how often it repeats, how long it takes, its steps — all of it is edited by tapping the
+task and typing, right where it sits in the list. There is no separate page for alarms,
+no page for priorities, and no hidden planner deciding things on your behalf.
 
-**Done** (the checkbox) means: *I did this today.* The task leaves today's list. If it's recurring — brushing teeth, gym, groceries — it will come back on the right day. If it's a recovery task, it will come back later, because the underlying problem still exists.
+A day does not own copies of tasks. It records what happened to them: what was
+completed, what was skipped, what was pulled in, and what order you put them in. So the
+task you edit on Today is the same object you edit anywhere else.
 
-**Finished** (the "This problem is resolved" button inside a task's details) means: *this problem no longer exists.* The app permanently stops generating that task. You always get a confirmation first, with three choices:
+---
 
-- **Finish and add maintenance** — the recovery task stops, and a lighter recurring check replaces it.
-- **Finish without maintenance** — the task simply stops.
-- **Cancel.**
+## The three tabs
 
-Only you decide when something is finished. After you've completed a recovery task several times, the app may gently ask whether the problem is resolved — but it never finishes anything on its own.
+**Today** — what is on today, in personal-day order: anything with a clock time first,
+then the rest. On a workday a strip at the top shows when to be out of bed, when to
+start getting ready and when to leave. Tap a task to open it. Tick the circle to
+complete it. Drag the grip to reorder. `+ Add a task for today` creates one and opens it
+ready to type into.
 
-**Recovery → maintenance examples**
+**Tasks** — every task in three groups:
 
-| Recovery task | Maintenance replacement | Suggested rhythm |
-|---|---|---|
-| Collect loose cables from one section of the floor | Check that no loose cables are lying on the floor | Every 2 weeks |
-| Vacuum one cleared section of floor | Vacuum the whole apartment | Monthly, on a Saturday |
-| Fill one bag with obvious rubbish | Do a ten-minute rubbish check | Weekly |
-| Flatten three delivery boxes | Check for empty delivery boxes | Monthly |
+- *Repeating* — things that come back on their own. Drag to set their order.
+- *Scheduled* — one-off tasks with a date. They finish for good when completed.
+- *Someday* — a shelf, not a list. Nothing here appears on a day until you move it
+  there. The cleanup jobs and the dentist and glasses checklists live here.
 
-Maintenance wording, frequency, and preferred weekday are all editable in **Profile → Recovery and maintenance**. That section also lets you restore a resolved goal, disable or re-enable any task template, and delete maintenance routines.
+Anything finished shows under **Finished** at the bottom and can be restored.
 
-One-time sequences (dental examination, new glasses, posture assessment) show one step at a time. Completing a step makes the next one eligible for a future day. When the real-world goal is achieved — you're wearing the new glasses — mark the whole sequence as Finished.
+**Projects** — a plain drag-to-order list of what you want to work on. No primary, no
+secondary, no paused or stored. Tap one to open it: name, notes, and a checklist of
+steps with a progress bar. Any step can be pushed onto today with its **Today** button,
+which creates a task linked back to the project.
+
+**Settings** is the gear in the top corner, not a tab: work and commute times, when the
+day rolls over, gym, theme and sound, backup, and the wall-device export.
+
+---
+
+## Editing a task
+
+Tapping a task opens it in place. Everything is there:
+
+| | |
+|---|---|
+| **Title, notes** | Typed straight in; saved as you type. |
+| **When** | Once (with a date), Every day, Weekly (pick days), Monthly (day of the month), or Interval (every *n* days/weeks/months, counted from the last time you did it). |
+| **Time and alarm** | A clock time, and an alarm switch that needs one. |
+| **Urgency** | Normal, Important or Urgent — shown as a quiet bar down the left edge of the row. |
+| **Takes about** | Minutes, if you want the estimate. |
+| **Times a week** | Optional weekly target. The row then reads e.g. *2 of 4 this week* — this is how the gym works, with no special machinery behind it. |
+| **Steps** | A checklist inside the task, draggable. |
+| **Project** | Which project it belongs to, if any. |
+| **Actions** | Tomorrow · Pick a day · Someday · Not today · Delete · Close. |
+
+Nothing is ever finished on your behalf. A repeating task stays; a one-off archives
+itself when completed and can be restored.
+
+---
+
+## The personal day
+
+Because the schedule crosses midnight, the day does not reset at 00:00. By default it
+rolls over at **14:00**, so cooking after a shift at 00:30 still counts as the day
+before. That time is also what orders the list: with a 14:00 reset, `15:50` comes before
+`23:30`, which comes before `04:00`. Change it in Settings → The day.
+
+---
+
+## Alarms, honestly
+
+An alarm chimes **only while the app is open and awake**. An installed PWA on a locked
+iPad cannot be woken up, and this app does not pretend otherwise — keep a real alarm for
+work. What the alarm switch does give you is a single place where every timed thing is
+recorded, which is what the wall device below reads.
+
+Settings → Wall device → **Export alarm schedule** writes one flat JSON file: wake and
+sleep, the calculated work departures, and every task with a clock time, sorted in
+personal-day order. No app internals are in it.
 
 ---
 
 ## Where your data lives
 
-Everything is stored in the browser's **local storage on this device**. Nothing is sent anywhere.
+In this browser, on this device, under the key `dailyTaskManagerV2`. Nothing is sent
+anywhere.
 
-> **Important:** if Safari's website data is cleared (manually, or by clearing browsing data), your Daily Task Manager data is erased with it. Export a backup now and then.
+> **If Safari's website data is cleared, the data goes with it.** Export a backup now
+> and then.
 
-- **Export a backup:** Profile → Backup → **Export backup**. A file named `daily-task-manager-backup-YYYY-MM-DD.json` is downloaded. Keep it somewhere safe (Files app, cloud drive, email to yourself).
-- **Restore a backup:** Profile → Backup → **Import backup**, then pick the JSON file. Everything — including resolved goals and maintenance routines — is restored.
-- **Reset:** Profile → Backup → **Reset application** erases everything after a confirmation.
+- **Export:** Settings → Backup → *Export backup* → `daily-task-manager-backup-YYYY-MM-DD.json`
+- **Import:** Settings → Backup → *Import backup*. Version 1 backups are accepted and
+  upgraded on the way in.
+- **Erase:** Settings → Backup → *Erase everything*, after a confirmation.
 
-Data survives normal page reloads and browser restarts automatically; saving happens on every change.
+Saving happens on every change.
 
----
+### Upgrading from version 1
 
-## Putting it on the web with GitHub Pages
+The first launch of version 2 reads the old data once and carries across what was yours:
+your own tasks with their days and times, your projects in their old on-screen order
+(the primary one first), your work and commute times, the day-reset, sleep and waking
+times, your gym days with this week's count, and the remaining steps of the dentist and
+glasses sequences. Active cleanup jobs land in Someday; old maintenance routines become
+interval tasks.
 
-This is a static PWA. Publish the **runtime files together at the root of the repository**:
+What version 2 does not have is dropped: the life-area priority table, the posture text
+box, the daily task cap, recovery counters and the generated day copies.
 
-- `index.html`
-- `manifest.webmanifest`
-- `sw.js`
-- `icon-192.png`
-- `icon-512.png`
-- `icon-maskable-512.png`
-
-The Markdown files, tests, `app.js`, and `make_icons.py` may remain in the repository, but they are not required by the running app. Do **not** upload only `index.html`, and do **not** put the runtime files inside an extra nested `daily-task-manager/` directory when the repository itself is already named `daily-task-manager`.
-
-A simple GitHub Pages deployment:
-
-1. Create a public repository named `daily-task-manager`.
-2. Put the contents of this project folder in the repository root and commit them to `main`.
-3. Open **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**.
-5. Select branch **main**, folder **/(root)**, then save.
-6. Wait for GitHub to show the live address, normally `https://YOURNAME.github.io/daily-task-manager/`.
-7. Open that exact HTTPS address once while online. Reload it once, then test Airplane Mode to confirm the cached app still opens.
-
-### Install it on the iPad from Safari
-
-1. Open the live GitHub Pages address in **Safari**.
-2. Tap **Share**.
-3. Tap **Add to Home Screen**. If shown, keep **Open as Web App** enabled.
-4. Tap **Add**.
-5. Launch **Daily Task Manager** from its new Home Screen icon and complete setup there.
-
-This is an “Add to Home Screen” installation, not an App Store download. Data is tied to that website address and stored locally on the device, so keep the repository name and Pages URL stable and export backups periodically.
+The old `dailyTaskManagerV1` key is **left untouched** as a safety net.
 
 ---
 
-## Alarm limitations (please read)
+## Hosting
 
-Version 1 is **not an alarm clock** and never claims to be. It can:
+Publish these files together at the root of the repository:
 
-- show the calculated times for waking, preparation, and departure,
-- strike through timed tasks once their time has passed,
-- optionally play a soft chime when a timed task comes due — **but only while the page is open and active** (enable it in Profile → Appearance and sound, and use "Test sound" to check the volume).
+`index.html` · `manifest.webmanifest` · `sw.js` · `icon-192.png` · `icon-512.png` · `icon-maskable-512.png`
 
-It cannot wake you or alert you when the Home Screen app is closed, the iPad is locked, or Safari has suspended it. Do not rely on it for waking up or leaving for work — keep using a real alarm for that until Version 2 exists.
+The Markdown files, the tests and `app.js` may stay in the repository; the running app
+does not need them. `start_url` and `scope` are relative, so a subpath such as
+`https://name.github.io/daily-task-manager/` works. Service workers need `https://` or
+`localhost`; on `file://` the app still runs, just without offline install.
+
+### Install on the iPad
+
+1. Open the live address in **Safari**.
+2. **Share** → **Add to Home Screen** → keep *Open as Web App* → **Add**.
+3. Launch it from the new icon.
+
+Data is tied to the address, so keep the repository name and URL stable.
 
 ---
 
-## Version 2 (future direction — not built yet)
+## Development
 
-Version 2 will run as an always-on wall device: a Raspberry Pi 4 Model B (2 GB) with Raspberry Pi OS, a touchscreen, and an amplified speaker, showing this same app fullscreen in browser kiosk mode with automatic startup. Because it never sleeps, it can add a small local alarm service for reliable audible alarms: waking, work departure, bedtime, appointments, and task reminders. Version 2 reuses the Version 1 interface and task-generation logic unchanged — which is why Version 1 keeps everything in one self-contained file.
+`app.js` is the editable copy of the script that `index.html` embeds. After editing it,
+splice it in and run the four suites — see `HANDOFF.md`.
+
+```bash
+node test.js && node domtest.js && node swtest.js && node pwatest.js
+```

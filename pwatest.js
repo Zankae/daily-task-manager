@@ -38,7 +38,7 @@ ok(sizes.includes("512x512"), "manifest declares a 512px icon");
 ok(manifest.icons.some(i => i.purpose === "maskable"), "manifest declares a maskable icon");
 manifest.icons.forEach(i => ok(fs.existsSync(path.join(__dirname, i.src)), "icon file exists: " + i.src));
 (manifest.shortcuts || []).forEach(s =>
-  ok(/^\.\/#(today|alarms|profile|projects)$/.test(s.url), "shortcut points at a real page: " + s.url));
+  ok(/^\.\/#(today|tasks|projects|settings)$/.test(s.url), "shortcut points at a real page: " + s.url));
 
 /* --- icons on disk --- */
 const png = f => {

@@ -1,4 +1,4 @@
-/* Daily Task Manager — service worker
+/* Daily Task Manager - service worker
  *
  * Offline strategy: the whole app is one HTML file, so the shell is simply
  * precached on install and served from cache first. Nothing is fetched at
@@ -13,7 +13,7 @@
  *
  * Keep CACHE_VERSION in step with APP_VERSION inside index.html.
  */
-const CACHE_VERSION = "daily-task-manager-v1.2.2";
+const CACHE_VERSION = "daily-task-manager-v2.0.0";
 
 const PRECACHE = [
   "./",

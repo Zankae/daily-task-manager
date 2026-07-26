@@ -1,6 +1,12 @@
 # Hermes deployment task — Daily Task Manager
 
-The application is finished. Do not redesign it, migrate frameworks, add a backend, or change storage.
+> **Historical.** This described the original version 1 deployment. The app is now at
+> version 2 and lives on the `prod` branch at
+> <https://zankae.github.io/daily-task-manager/>. The deployment procedure below still
+> applies, except that Pages deploys from **`prod`**, not `main`. For anything about how
+> the app itself works, read `HANDOFF.md` — it supersedes this file.
+
+Do not migrate frameworks, add a backend, or change storage.
 
 ## Goal
 

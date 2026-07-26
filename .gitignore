@@ -1,0 +1,3 @@
+# Local development helpers, not part of the published app.
+.claude/
+__pycache__/

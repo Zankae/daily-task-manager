@@ -1,7 +1,7 @@
 {
   "name": "Daily Task Manager",
   "short_name": "Daily Task Manager",
-  "description": "A quiet daily task manager that plans a small list of tasks for you each day.",
+  "description": "A quiet daily task manager. Every task is edited in the task itself.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -20,6 +20,7 @@
   ],
   "shortcuts": [
     { "name": "Today", "short_name": "Today", "url": "./#today", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
-    { "name": "Alarms", "short_name": "Alarms", "url": "./#alarms", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+    { "name": "Tasks", "short_name": "Tasks", "url": "./#tasks", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Projects", "short_name": "Projects", "url": "./#projects", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
   ]
 }
