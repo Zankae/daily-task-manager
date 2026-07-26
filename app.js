@@ -13,7 +13,7 @@
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.1.1";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.2.0";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -846,77 +846,98 @@ function toast(msg){
   toastTimer=setTimeout(()=>t.classList.remove("show"),2600);
 }
 
-/* Drag to reorder, built on pointer events so it works with a finger on the
-   iPad. Rows move in the DOM as the finger passes them; the new order is
-   handed back on release. */
+/* Drag to reorder, on pointer events because HTML5 drag-and-drop does not work
+   with a finger on iOS.
+
+   Every position is measured once, when the drag starts, and every decision
+   after that comes from that snapshot plus how far the finger has travelled.
+   Nothing is measured from the live DOM mid-drag. An earlier version moved
+   rows and read their positions back in the same breath, which is a feedback
+   loop: with rows of different heights a quick flick made it oscillate and
+   strand a row on top of its neighbour instead of dropping into place.
+
+   So the dragged row follows the finger, the rows it passes slide out of the
+   way by exactly the space it vacated, and the DOM is reordered once, on
+   release. */
 function makeSortable(list,onDrop){
   let st=null;
+  function rowsIn(){
+    const out=[];
+    Array.prototype.forEach.call(list.children,c=>{
+      if(c.hasAttribute&&c.hasAttribute("data-row"))out.push(c);});
+    return out;
+  }
   list.addEventListener("pointerdown",ev=>{
+    if(st)return;
     const grip=ev.target.closest?ev.target.closest(".grip"):null;
     if(!grip||!list.contains(grip))return;
     const row=grip.closest("[data-row]");
     /* Steps are sortable inside a task that is itself sortable. Only the list
        that directly owns the row may claim the drag. */
     if(!row||row.parentNode!==list)return;
+    const rows=rowsIn();
+    const from=rows.indexOf(row);
+    if(from<0||rows.length<2)return;
     ev.preventDefault();
     ev.stopPropagation();
-    st={row:row,grip:grip,y0:ev.clientY,dy:0};
+    const rects=rows.map(r=>r.getBoundingClientRect());
+    const gap=from<rows.length-1 ? rects[from+1].top-rects[from].bottom
+                                 : rects[from].top-rects[from-1].bottom;
+    st={row:row,grip:grip,rows:rows,rects:rects,from:from,to:from,
+        y0:ev.clientY,pointerId:ev.pointerId,
+        occupied:rects[from].height+Math.max(0,gap)};
     row.classList.add("dragging");
     try{grip.setPointerCapture(ev.pointerId);}catch(e){}
-    grip.addEventListener("pointermove",move);
-    grip.addEventListener("pointerup",up);
-    grip.addEventListener("pointercancel",up);
+    /* Listen on the document, not the grip: if the finger outruns the row or
+       pointer capture is refused, the drag must still finish rather than stick
+       half-way with the row left floating. */
+    document.addEventListener("pointermove",move,{passive:false});
+    document.addEventListener("pointerup",up);
+    document.addEventListener("pointercancel",up);
   });
-  function shiftBaseline(fn){
-    const before=st.row.getBoundingClientRect().top;
-    fn();
-    const after=st.row.getBoundingClientRect().top;
-    st.y0+=after-before;
-  }
-  function follow(ev){
-    st.dy=ev.clientY-st.y0;
-    st.row.style.transform="translateY("+st.dy+"px)";
-  }
   function move(ev){
-    if(!st)return;
-    follow(ev);
-    /* A finger crosses several rows between frames, so keep swapping until the
-       row has caught up with it rather than one place per event. */
-    for(let guard=0;guard<40;guard++){
-      const r=st.row.getBoundingClientRect();
-      const mid=r.top+r.height/2;
-      const prev=prevRow(st.row),next=nextRow(st.row);
-      let swapped=false;
-      if(prev){
-        const b=prev.getBoundingClientRect();
-        if(mid<b.top+b.height/2){shiftBaseline(()=>list.insertBefore(st.row,prev));swapped=true;}
-      }
-      if(!swapped&&next){
-        const b=next.getBoundingClientRect();
-        if(mid>b.top+b.height/2){shiftBaseline(()=>list.insertBefore(next,st.row));swapped=true;}
-      }
-      if(!swapped)break;
-      follow(ev);
-    }
+    if(!st||ev.pointerId!==st.pointerId)return;
+    if(ev.cancelable)ev.preventDefault();
+    const dy=ev.clientY-st.y0;
+    const centre=st.rects[st.from].top+dy+st.rects[st.from].height/2;
+    /* Where would it land? Answered against the original positions, so the
+       answer only ever moves in step with the finger. */
+    let to=st.from;
+    for(let i=st.from+1;i<st.rows.length;i++)
+      if(centre>st.rects[i].top+st.rects[i].height/2)to=i;
+    if(to===st.from)
+      for(let i=st.from-1;i>=0;i--)
+        if(centre<st.rects[i].top+st.rects[i].height/2)to=i;
+    st.to=to;
+    st.row.style.transform="translateY("+dy+"px)";
+    st.rows.forEach((r,i)=>{
+      if(i===st.from)return;
+      let shift=0;
+      if(to>st.from&&i>st.from&&i<=to)shift=-st.occupied;
+      else if(to<st.from&&i>=to&&i<st.from)shift=st.occupied;
+      r.style.transform=shift?"translateY("+shift+"px)":"";
+    });
   }
   function up(){
     if(!st)return;
-    const g=st.grip;
-    g.removeEventListener("pointermove",move);
-    g.removeEventListener("pointerup",up);
-    g.removeEventListener("pointercancel",up);
-    st.row.classList.remove("dragging");
-    st.row.style.transform="";
+    document.removeEventListener("pointermove",move);
+    document.removeEventListener("pointerup",up);
+    document.removeEventListener("pointercancel",up);
+    const rows=st.rows,from=st.from,to=st.to,row=st.row;
     st=null;
-    const ids=[];
-    Array.prototype.forEach.call(list.children,c=>{
-      if(c.hasAttribute&&c.hasAttribute("data-row"))ids.push(c.getAttribute("data-row"));});
-    if(onDrop)onDrop(ids);
+    rows.forEach(r=>{r.style.transform="";});
+    if(to!==from){
+      const order=rows.slice();
+      order.splice(to,0,order.splice(from,1)[0]);
+      order.forEach(r=>list.appendChild(r));    /* one reorder, at the end */
+      if(onDrop)onDrop(order.map(r=>r.getAttribute("data-row")));
+    }
+    /* Drop the class a frame later so the row snaps into its new slot instead
+       of animating there from wherever the finger left it. */
+    const settle=()=>row.classList.remove("dragging");
+    if(typeof requestAnimationFrame==="function")requestAnimationFrame(settle);
+    else settle();
   }
-  function prevRow(n){let s=n.previousElementSibling;
-    while(s&&!s.hasAttribute("data-row"))s=s.previousElementSibling;return s;}
-  function nextRow(n){let s=n.nextElementSibling;
-    while(s&&!s.hasAttribute("data-row"))s=s.nextElementSibling;return s;}
   return list;
 }
 function grip(){return el("div",{class:"grip","aria-hidden":"true"},icon("grip"));}
@@ -947,6 +968,19 @@ function field(label,node,hint){
   if(!hint)return f;
   return el("div",{},f,el("p",{class:"hint",text:hint}));
 }
+/* One section of the task editor: a titled box, slightly lighter than the row
+   behind it. Boxes group what belongs together far better than a scattering of
+   divider lines did. */
+function esec(title,...kids){
+  const s=el("div",{class:"esec"});
+  if(title)s.append(el("h3",{class:"esect",text:title}));
+  kids.forEach(function add(c){
+    if(c===null||c===undefined||c===false)return;
+    if(Array.isArray(c)){c.forEach(add);return;}
+    s.append(c);
+  });
+  return s;
+}
 function switchRow(label,checked,onchange,hint){
   const inp=el("input",{type:"checkbox"});
   inp.checked=!!checked;
@@ -964,6 +998,12 @@ function timeInput(value,onchange){
 
 /* ================= view state ================= */
 const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,notes:null};
+
+/* Opening a task is always done through here. The tap that opens one also
+   bubbles on to the close-on-outside-tap handler, which would otherwise shut it
+   again the instant it appeared. */
+let openedByThisTap=false;
+function openTask(id){ui.open=id;ui.notes=null;openedByThisTap=true;}
 
 /* ================= header =================
    The date is the app's anchor, but the second line describes whatever page is
@@ -1018,7 +1058,7 @@ function renderToday(){
   root.append(el("div",{class:"btnrow"},
     el("button",{class:"btn primary wide",text:"+  Add a task for today",onclick:()=>{
       const t=addTask({date:k,start:k,repeat:{kind:"once",days:[],dom:1,every:2,unit:"week"}});
-      ui.open=t.id;render();
+      openTask(t.id);render();
       const inp=document.querySelector('[data-row="'+t.id+'"] .titleInput');
       if(inp)inp.focus();
     }}),
@@ -1102,7 +1142,8 @@ function taskRow(t,opts){
   }
 
   const mid=el("div",{class:"tmid",onclick:()=>{
-    ui.open=expanded?null:t.id;render();
+    if(expanded)ui.open=null;else openTask(t.id);
+    render();
     if(!expanded){
       /* Bring the opened task to the top so as much of the editor as will fit
          is on screen, rather than leaving it half below the fold. */
@@ -1175,81 +1216,80 @@ function taskEditor(t,k){
 
   /* --- when: one of three, never all of them --- */
   if(shelved){
-    b.append(el("h3",{class:"esect",text:"Not on a day"}));
     const bits=["It waits on the shelf until you put it on a day."];
     if(repeating)bits.push("Set to repeat "+repeatLabel(t).toLowerCase()+" from then on.");
     if(t.time)bits.push("Keeps its "+t.time+" time.");
-    b.append(el("p",{class:"hint",text:bits.join(" ")}));
+    b.append(esec("Not on a day",el("p",{class:"hint tight",text:bits.join(" ")})));
   }else if(repeating){
-    b.append(el("h3",{class:"esect",text:"How often"}));
-    b.append(segmented([["daily","Every day"],["weekly","Weekly"],
-                        ["monthly","Monthly"],["every","Interval"]],
+    const parts=[];
+    parts.push(segmented([["daily","Every day"],["weekly","Weekly"],
+                          ["monthly","Monthly"],["every","Interval"]],
       t.repeat.kind,v=>{
         t.repeat.kind=v;
         if(v==="weekly"&&!t.repeat.days.length)t.repeat.days=[dowOf(k)];
         if(v==="monthly")t.repeat.dom=keyToDate(k).getDate();
         redraw();
       }));
-    if(t.repeat.kind==="weekly")b.append(dayPills(t.repeat.days,()=>redraw()));
+    if(t.repeat.kind==="weekly")parts.push(dayPills(t.repeat.days,()=>redraw()));
     if(t.repeat.kind==="monthly")
-      b.append(field("Day of the month",numInput(t.repeat.dom,v=>{
+      parts.push(field("Day of the month",numInput(t.repeat.dom,v=>{
         t.repeat.dom=clampInt(v,1,31,1);redraw();},1,31)));
     if(t.repeat.kind==="every"){
       const n=numInput(t.repeat.every,v=>{t.repeat.every=clampInt(v,1,365,1);redraw();},1,365);
       const unit=el("select",{onchange:e=>{t.repeat.unit=e.target.value;redraw();}},
         ["day","week","month"].map(u=>el("option",{value:u,selected:t.repeat.unit===u,text:u+"s"})));
-      b.append(field("Every",el("div",{class:"inline"},n,unit),
+      parts.push(field("Every",el("div",{class:"inline"},n,unit),
         t.lastDone?"Last done "+shortDate(t.lastDone):"Never done yet, so it is due now"));
     }
-    b.append(el("button",{class:"btn quiet small",text:"Make it a one-off instead",onclick:()=>{
+    parts.push(el("button",{class:"btn quiet small",text:"Make it a one-off instead",onclick:()=>{
       t.repeat.kind="once";
       if(!t.date)t.date=state.today;
       t.weeklyTarget=null;
       redraw();}}));
+    b.append(esec("How often",parts));
   }else{
-    b.append(el("h3",{class:"esect",text:"When"}));
-    b.append(field("Date",el("input",{type:"date",value:t.date||"",
-      onchange:e=>{t.date=validKey(e.target.value)?e.target.value:null;redraw();}}),
-      t.date?null:"With no date it stays out of the way until you pick one."));
-    b.append(el("button",{class:"btn quiet small",text:"Make it repeat instead",onclick:()=>{
-      t.repeat.kind="weekly";
-      if(!t.repeat.days.length)t.repeat.days=[dowOf(t.date||state.today)];
-      redraw();}}));
+    b.append(esec("When",
+      field("Date",el("input",{type:"date",value:t.date||"",
+        onchange:e=>{t.date=validKey(e.target.value)?e.target.value:null;redraw();}}),
+        t.date?null:"With no date it stays out of the way until you pick one."),
+      el("button",{class:"btn quiet small",text:"Make it repeat instead",onclick:()=>{
+        t.repeat.kind="weekly";
+        if(!t.repeat.days.length)t.repeat.days=[dowOf(t.date||state.today)];
+        redraw();}})));
   }
 
   /* --- time and alarm: only once it belongs to a day --- */
-  if(!shelved){
-    b.append(el("h3",{class:"esect",text:t.time?"Time and alarm":"Time"}));
-    b.append(field("Clock time",el("div",{class:"inline"},
-      timeInput(t.time,v=>{t.time=validHM(v)?v:null;if(!t.time)t.alarm=false;redraw();}),
-      t.time?el("button",{class:"btn quiet small",text:"Clear",onclick:()=>{
-        t.time=null;t.alarm=false;redraw();}}):null)));
-    /* No dead switch: the alarm appears once there is a time for it to ring at. */
-    if(t.time)
-      b.append(switchRow("Alarm",t.alarm,v=>{t.alarm=v;redraw();},
-        "Chimes at "+t.time+", but only while the app is open"));
-  }
+  if(!shelved)
+    b.append(esec(t.time?"Time and alarm":"Time",
+      field("Clock time",el("div",{class:"inline"},
+        timeInput(t.time,v=>{t.time=validHM(v)?v:null;if(!t.time)t.alarm=false;redraw();}),
+        t.time?el("button",{class:"btn quiet small",text:"Clear",onclick:()=>{
+          t.time=null;t.alarm=false;redraw();}}):null)),
+      /* No dead switch: the alarm appears once there is a time for it to ring at. */
+      t.time?switchRow("Alarm",t.alarm,v=>{t.alarm=v;redraw();},
+        "Chimes at "+t.time+", but only while the app is open"):null));
 
   /* --- urgency and size --- */
-  b.append(el("h3",{class:"esect",text:"Urgency"}));
-  b.append(segmented([["normal","Normal"],["important","Important"],["urgent","Urgent"]],
-    t.urgency,v=>{t.urgency=v;redraw();}));
-  b.append(field("Takes about",el("div",{class:"inline"},
-    numInput(t.minutes,v=>{t.minutes=v===""?null:clampInt(v,1,1440,null);save();},1,1440),
-    el("span",{class:"unit",text:"minutes"}))));
-  /* A weekly target only means something on something that recurs. */
-  if(!shelved&&(t.repeat.kind==="weekly"||t.repeat.kind==="every"))
-    b.append(field("Times a week",el("div",{class:"inline"},
-      numInput(t.weeklyTarget,v=>{t.weeklyTarget=v===""?null:clampInt(v,1,14,null);redraw();},1,14),
-      el("span",{class:"unit",text:t.weeklyTarget?doneThisWeek(t,k)+" done this week":"optional"}))));
+  b.append(esec("Urgency",
+    segmented([["normal","Normal"],["important","Important"],["urgent","Urgent"]],
+      t.urgency,v=>{t.urgency=v;redraw();}),
+    field("Takes about",el("div",{class:"inline"},
+      numInput(t.minutes,v=>{t.minutes=v===""?null:clampInt(v,1,1440,null);save();},1,1440),
+      el("span",{class:"unit",text:"minutes"}))),
+    /* A weekly target only means something on something that recurs. */
+    (!shelved&&(t.repeat.kind==="weekly"||t.repeat.kind==="every"))
+      ? field("Times a week",el("div",{class:"inline"},
+          numInput(t.weeklyTarget,v=>{t.weeklyTarget=v===""?null:clampInt(v,1,14,null);redraw();},1,14),
+          el("span",{class:"unit",text:t.weeklyTarget?doneThisWeek(t,k)+" done this week":"optional"})))
+      : null));
 
   /* --- steps --- */
   const hasSteps=(t.steps||[]).length>0;
+  let stepList=null;
   if(hasSteps){
-    b.append(el("h3",{class:"esect",text:"Steps"}));
-    const steps=el("div",{class:"steps"});
+    stepList=el("div",{class:"steps"});
     t.steps.forEach(s=>{
-      steps.append(el("div",{class:"step","data-row":s.id},
+      stepList.append(el("div",{class:"step","data-row":s.id},
         grip(),
         el("button",{class:"check tiny"+(s.done?" on":""),"aria-label":"Toggle step",
           onclick:()=>{s.done=!s.done;redraw();}},s.done?icon("tick"):null),
@@ -1258,28 +1298,30 @@ function taskEditor(t,k){
         iconBtn("x","Remove step",()=>{
           t.steps=t.steps.filter(x=>x.id!==s.id);redraw();})));
     });
-    makeSortable(steps,ids=>{
+    makeSortable(stepList,ids=>{
       const pos={};ids.forEach((id,i)=>{pos[id]=i;});
       t.steps.sort((a,b2)=>(pos[a.id]===undefined?99:pos[a.id])-(pos[b2.id]===undefined?99:pos[b2.id]));
       saveState();
     });
-    b.append(steps);
   }
-  b.append(el("button",{class:"btn quiet small",text:hasSteps?"+ Add step":"+ Break it into steps",
+  const addStep=el("button",{class:"btn quiet small",
+    text:hasSteps?"+ Add step":"+ Break it into steps",
     onclick:()=>{
       t.steps.push(sanitizeStep({title:""}));redraw();
       const inputs=document.querySelectorAll('[data-row="'+t.id+'"] .step input');
       if(inputs.length)inputs[inputs.length-1].focus();
-    }}));
+    }});
+  /* No steps yet means no section: an empty titled box would be a box around
+     nothing, and it costs a chunk of the screen to say so. */
+  b.append(hasSteps?esec("Steps",stepList,addStep):addStep);
 
   /* --- project link --- */
   const projects=(state.projects||[]).filter(p=>p.status==="active");
   if(projects.length){
-    b.append(el("h3",{class:"esect",text:"Project"}));
     const sel=el("select",{onchange:e=>{t.projectId=e.target.value||null;redraw();}},
       el("option",{value:"",selected:!t.projectId,text:"None"}),
       projects.map(p=>el("option",{value:p.id,selected:t.projectId===p.id,text:p.name||"Untitled"})));
-    b.append(field("Belongs to",sel));
+    b.append(esec("Project",field("Belongs to",sel)));
   }
 
   /* --- actions: only the moves that make sense from here --- */
@@ -1368,7 +1410,7 @@ function renderTasks(){
              :ui.tab==="repeating"?{repeat:{kind:"weekly",days:[dowOf(state.today)],dom:1,every:2,unit:"week"}}
              :{date:state.today};
       const t=addTask(o);
-      ui.open=t.id;render();
+      openTask(t.id);render();
       const inp=document.querySelector('[data-row="'+t.id+'"] .titleInput');
       if(inp)inp.focus();
     }})));
@@ -1486,7 +1528,7 @@ function projectDetail(p){
         el("button",{class:"btn quiet small",text:"Today",onclick:()=>{
           const t=addTask({title:s.title||p.name,date:state.today,start:state.today,
             projectId:p.id,notes:"From project: "+p.name});
-          ui.page="today";ui.open=t.id;render();
+          ui.page="today";openTask(t.id);render();
           toast("Added to today.");}}),
         iconBtn("x","Remove step",()=>{
           p.steps=p.steps.filter(x=>x.id!==s.id);redraw();}))));
@@ -1574,7 +1616,7 @@ function renderSettings(){
       text:"The gym is an ordinary task. Its days, time and weekly target live in the task itself."}));
     g.append(el("div",{class:"btnrow"},
       el("button",{class:"btn",text:"Open the gym task",onclick:()=>{
-        ui.page="tasks";ui.tab=isRepeating(gym)?"repeating":"scheduled";ui.open=gym.id;render();}})));
+        ui.page="tasks";ui.tab=isRepeating(gym)?"repeating":"scheduled";openTask(gym.id);render();}})));
     g.append(el("p",{class:"calc",text:repeatLabel(gym)+
       (gym.weeklyTarget?"   "+doneThisWeek(gym,state.today)+" of "+gym.weeklyTarget+" this week":"")}));
   }else{
@@ -1582,7 +1624,7 @@ function renderSettings(){
     g.append(el("div",{class:"btnrow"},el("button",{class:"btn",text:"Create one",onclick:()=>{
       const t=addTask({title:"Go to the gym",minutes:p.gymDuration||60,weeklyTarget:4,
         urgency:"important",repeat:{kind:"weekly",days:p.gymDays.slice(),dom:1,every:2,unit:"week"}});
-      ui.page="tasks";ui.tab="repeating";ui.open=t.id;render();}})));
+      ui.page="tasks";ui.tab="repeating";openTask(t.id);render();}})));
   }
   root.append(g);
 
@@ -1711,6 +1753,29 @@ function pageFromHash(){
   return ["today","tasks","projects","settings"].includes(h)?h:null;
 }
 
+/* Tapping anywhere outside an open task closes it, the same as its Close
+   button -- the empty margins beside the column are the natural place to tap.
+   Walking up from the target by hand rather than using closest() is deliberate:
+   a tap inside the editor may have already rebuilt the page, leaving the target
+   detached, and the walk still finds the task it belonged to. */
+function closeOnOutsideTap(){
+  /* Every fresh interaction starts with a clean slate, so the flag can never
+     go stale and swallow a legitimate outside tap. */
+  document.addEventListener("pointerdown",()=>{openedByThisTap=false;},true);
+  document.addEventListener("click",ev=>{
+    if(openedByThisTap){openedByThisTap=false;return;}
+    if(!ui.open)return;
+    let n=ev.target;
+    if(!n||!n.closest)return;
+    if(n.closest("#modalHost")||n.closest("#tabs")||n.closest("#gear"))return;
+    while(n&&n.getAttribute){
+      if(n.getAttribute("data-row")===ui.open)return;   /* inside the open task */
+      n=n.parentElement;
+    }
+    ui.open=null;ui.notes=null;render();
+  });
+}
+
 /* ================= behave like an app, not a page =================
    Three layers, because iOS honours different ones in Safari and in an
    installed web app: the viewport meta, touch-action in CSS, and these. Safari
@@ -1750,6 +1815,7 @@ function boot(){
   byId("gear").addEventListener("click",()=>goto("settings"));
   document.querySelector("#modalHost .veil").addEventListener("click",closeModal);
   lockDownGestures();
+  closeOnOutsideTap();
   if(!state.profile.setupComplete)showSetup();
   window.addEventListener("hashchange",()=>{const p=pageFromHash();if(p)goto(p);});
   registerServiceWorker();

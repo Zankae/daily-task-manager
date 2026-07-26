@@ -46,6 +46,7 @@ class N {
   }
   get previousElementSibling() { return this._sib(-1); }
   get nextElementSibling() { return this._sib(1); }
+  get parentElement() { return this.parent && this.parent.nodeType === 1 ? this.parent : null; }
   contains(n) { let p = n; while (p) { if (p === this) return true; p = p.parent; } return false; }
 
   /* --- attributes --- */
@@ -124,13 +125,22 @@ class N {
   }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
 
-  /* --- layout: position by index among element siblings, plus any transform --- */
+  /* --- layout: rows stack in order, each as tall as it says it is, plus any
+     transform. Heights can differ (_h), because real task rows do: one with a
+     repeat line and a step count is taller than a bare one, and that is exactly
+     where a sortable goes wrong. --- */
   getBoundingClientRect() {
     let top = 0;
-    if (this.parent) top = this.parent.elementChildren.indexOf(this) * ROW;
+    const h = this._h || ROW;
+    if (this.parent) {
+      for (const s of this.parent.elementChildren) {
+        if (s === this) break;
+        top += (s._h || ROW);
+      }
+    }
     const m = /translateY\((-?[\d.]+)px\)/.exec(this.style.transform || "");
     if (m) top += parseFloat(m[1]);
-    return { top: top, height: ROW, bottom: top + ROW, left: 0, width: 300 };
+    return { top: top, height: h, bottom: top + h, left: 0, width: 300 };
   }
 
   /* --- events --- */
@@ -138,10 +148,12 @@ class N {
   removeEventListener(t, f) {
     if (this.listeners[t]) this.listeners[t] = this.listeners[t].filter(x => x !== f);
   }
-  /* Fires on this node and then up the tree, like a bubbling event. */
+  /* Fires on this node and then up the tree, like a bubbling event, finishing
+     at the document -- where the drag and the tap-outside handlers listen. */
   fire(type, props) {
     const ev = Object.assign({
-      target: this, preventDefault() { }, stopPropagation() { this._stop = true; },
+      target: this, cancelable: true,
+      preventDefault() { }, stopPropagation() { this._stop = true; },
       pointerId: 1
     }, props || {});
     let n = this;
@@ -150,6 +162,7 @@ class N {
       if (ev._stop) break;
       n = n.parent;
     }
+    if (!ev._stop) (doc.listeners[type] || []).slice().forEach(f => f(ev));
     return ev;
   }
   setPointerCapture() { }
@@ -171,7 +184,11 @@ const doc = {
   getElementById: id => ids[id] || null,
   querySelector: s => body.querySelector(s),
   querySelectorAll: s => body.querySelectorAll(s),
-  addEventListener: () => { }
+  listeners: {},
+  addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); },
+  removeEventListener(t, f) {
+    if (this.listeners[t]) this.listeners[t] = this.listeners[t].filter(x => x !== f);
+  }
 };
 function build(tag, attrs, ...kids) {
   const n = new N(tag);
@@ -516,6 +533,101 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   btn(again.querySelector(".editor"), "Delete").fire("click");
   btn($("modalHost"), "Delete").fire("click");
   ok(!state.tasks.some(t => t.id === vid), "confirming deletes it");
+
+  /* ================= tapping outside closes the open task ================= */
+  tab("today").fire("click");
+  const anyTask = $("page-today").querySelector(".task");
+  const anyId = anyTask.getAttribute("data-row");
+  anyTask.querySelector(".tmid").fire("click");
+  ok(T.ui.open === anyId, "a task is open");
+  /* the tap that opened it must not also close it */
+  ok(!!$("page-today").querySelector(".editor"), "and stays open after the tap that opened it");
+  /* a tap inside the editor keeps it open */
+  $("page-today").querySelector(".editor").querySelector("input").fire("click");
+  ok(T.ui.open === anyId, "tapping inside the editor keeps it open");
+  /* the empty page beside the column closes it */
+  $("wrap").fire("click");
+  eq(T.ui.open, null, "tapping the page outside closes it");
+  ok(!$("page-today").querySelector(".editor"), "and the editor is gone");
+  /* adding a task opens it and it must survive its own tap */
+  btn($("page-today"), "+  Add a task for today").fire("click");
+  ok(T.ui.open !== null && !!$("page-today").querySelector(".editor"),
+    "a newly added task stays open");
+  const strayId = T.ui.open;
+  $("wrap").fire("click");
+  eq(T.ui.open, null, "and closes on an outside tap like any other");
+  T.deleteTask(strayId);
+
+  /* ================= dragging quickly must still settle ================= */
+  tab("projects").fire("click");
+  {
+    const list = $("page-projects").querySelector(".list");
+    const names = () => [...list.children].filter(c => c.hasAttribute("data-row"))
+      .map(c => c.querySelector(".ttitle").textContent);
+    const before = names();
+    const row = list.children[0];
+    const g = row.querySelector(".grip");
+    /* a flick: one big jump from the top of the list to past the bottom row */
+    g.fire("pointerdown", { clientY: ROW * 0 + ROW / 2 });
+    g.fire("pointermove", { clientY: ROW * 3 + ROW - 2 });
+    g.fire("pointerup", { clientY: ROW * 3 + ROW - 2 });
+    const after = names();
+    eq(after[after.length - 1], before[0], "a fast flick lands the row at the far end");
+    eq(after.length, before.length, "and nothing is lost on the way");
+    ok([...list.children].every(c => !c.style.transform),
+      "no row is left stranded with an offset");
+    ok(!row.className.includes("dragging"), "and the drag state is cleared");
+    ok(before.slice(1).every((n, i) => after[i] === n), "the others keep their order");
+
+    /* and back again, in several small steps */
+    const list2 = $("page-projects").querySelector(".list");
+    const last = list2.children[list2.children.length - 1];
+    const g2 = last.querySelector(".grip");
+    const startY = ROW * 3 + ROW / 2;
+    g2.fire("pointerdown", { clientY: startY });
+    for (let s = 1; s <= 8; s++) g2.fire("pointermove", { clientY: startY - s * 24 });
+    g2.fire("pointerup", { clientY: startY - 8 * 24 });
+    eq(names()[0], before[0], "and a slow drag returns it to the top");
+    ok([...list2.children].every(c => !c.style.transform), "again leaving nothing offset");
+  }
+
+  /* --- rows of different heights, flicked hard both ways --- */
+  {
+    tab("projects").fire("click");
+    const list = $("page-projects").querySelector(".list");
+    const rows = [...list.children].filter(c => c.hasAttribute("data-row"));
+    [96, 48, 132, 60].forEach((h, i) => { rows[i]._h = h; });
+    const names = () => [...list.children].filter(c => c.hasAttribute("data-row"))
+      .map(c => c.querySelector(".ttitle").textContent);
+    const before = names();
+    const top = () => rows.map(r => r.getBoundingClientRect().top);
+
+    /* grab the short second row and fling it well past the tall third one */
+    const row = list.children[1];
+    const g = row.querySelector(".grip");
+    const r = row.getBoundingClientRect();
+    g.fire("pointerdown", { clientY: r.top + r.height / 2 });
+    g.fire("pointermove", { clientY: 400 });
+    g.fire("pointerup", { clientY: 400 });
+    let after = names();
+    eq(after[after.length - 1], before[1], "an uneven list still lands it at the end");
+    eq(after.length, 4, "with every row still present");
+    ok([...list.children].every(c => !c.style.transform), "and none left stranded");
+
+    /* now fling it back to the very top */
+    const list3 = $("page-projects").querySelector(".list");
+    const moved = list3.children[list3.children.length - 1];
+    const g3 = moved.querySelector(".grip");
+    const rr = moved.getBoundingClientRect();
+    g3.fire("pointerdown", { clientY: rr.top + rr.height / 2 });
+    g3.fire("pointermove", { clientY: -200 });
+    g3.fire("pointerup", { clientY: -200 });
+    after = names();
+    eq(after[0], before[1], "and back to the very top");
+    ok([...list3.children].every(c => !c.style.transform), "still nothing stranded");
+    ok(new Set(after).size === 4, "no duplicates and nothing dropped");
+    rows.forEach(r => { delete r._h; });
+  }
 
   /* ================= it must look drawn, not typed =================
      Characters like U+2699 GEAR and U+23F0 ALARM CLOCK come out as colour

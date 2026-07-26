@@ -91,6 +91,16 @@ Without a version bump, browsers keep serving the cached old app.
   repeat. Every kind still carries an explicit "make it a one-off / make it repeat"
   escape hatch, so narrowing the surface never takes control away. Derive this from the
   task itself (`bucket`, `repeat.kind`), never from which tab happens to be open.
+- **Editor sections are boxes, not divider lines.** Each is an `.esec` a step lighter than
+  the row behind it (`--panel2` on `--panel`), with its controls a step lighter again
+  (`--panel3`) so they lift off it. Never render an `.esec` with no title or no content —
+  a box around nothing reads as a mistake and costs a chunk of a 1024px-tall screen. A
+  typical editor is ~920px and fits without scrolling; keep it that way.
+- **Opening a task goes through `openTask()`.** The tap that opens one bubbles on to the
+  close-on-outside-tap handler, which would otherwise shut it again the instant it
+  appeared. That handler walks up from the event target by hand rather than using
+  `closest()`, because a tap inside the editor may already have rebuilt the page and left
+  the target detached — the walk still finds the task it belonged to.
 - **Never claim to be a reliable alarm.** It can chime only while the page is open.
 - **`localStorage` is the only store**, key `dailyTaskManagerV2`, `schemaVersion: 2`. Any
   new field needs a default in `defaultState()` *and* sanitising in `validateState()`,
@@ -127,11 +137,18 @@ Without a version bump, browsers keep serving the cached old app.
   stay that way; it was 1089px tall before it became contextual, which meant scrolling to
   reach the buttons.
 - **`makeSortable(list, onDrop)`** is pointer-event based, because HTML5 drag-and-drop does
-  not work with a finger on iOS. It reads live positions from `getBoundingClientRect`, so
-  **the dragged row must not have a CSS `transition` on `transform`** — an animated
-  transform lags behind the finger and the reorder silently never triggers. That is what
-  `.task.dragging{transition:none}` is for. Only the list that directly owns a row may
-  claim the drag, which is how a sortable step list works inside a sortable task.
+  not work with a finger on iOS. **Measure once, at `pointerdown`, and never again.**
+  Every later decision comes from that snapshot plus how far the finger has moved; the
+  dragged row is translated, the rows it passes are translated out of its way, and the DOM
+  is reordered exactly once, on release. Two earlier versions got this wrong: one animated
+  the dragged row's `transform`, so reading its position back gave the mid-animation value
+  and the reorder never fired at all; the next moved rows in the DOM and read their
+  positions back in the same breath, which is a feedback loop that oscillates on rows of
+  differing heights and strands one on top of another during a fast flick. Related rules:
+  the dragged row keeps `transition:none` (`.task.dragging`), the grip keeps
+  `touch-action:none`, move and up are listened for on the **document** so a finger that
+  outruns the row cannot leave the drag stuck, and only the list that directly owns a row
+  may claim the drag — which is how a sortable step list works inside a sortable task.
 
 ## The wall device (version 3, Raspberry Pi)
 
