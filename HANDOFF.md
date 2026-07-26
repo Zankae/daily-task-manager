@@ -85,6 +85,13 @@ Without a version bump, browsers keep serving the cached old app.
   own padding and ignores `width`/`height`, which is what turned the completion circles
   into ellipses. `.check` additionally pins `min`/`max` width and height and
   `aspect-ratio:1/1`.
+- **Every page must stay scrollable** — `body{min-height:calc(100vh + 1px)}`. With
+  `viewport-fit=cover`, iOS anchors a `position:fixed; bottom:0` bar to the bottom of the
+  *safe area* on a page that cannot scroll, and to the bottom of the *screen* on one that
+  can. Projects was the only page short enough to fit the screen, so the tab bar jumped up
+  by the home-indicator inset on that one tab and sat correctly on every other. Do not
+  "fix" a short page by letting it stop scrolling. `#tabs::after` paints the strip below
+  the bar in the bar's own colour as a second line of defence.
 - **The editor shows only what applies.** A shelved task has no day, so it is offered no
   date, no clock time, no alarm and no weekly target. A repeating task has no single
   date; a one-off has no frequency; a weekly target only appears on a weekly or interval

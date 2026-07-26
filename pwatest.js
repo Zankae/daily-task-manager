@@ -22,6 +22,12 @@ ok(/viewport-fit=cover/.test(html), "viewport-fit=cover kept for safe areas");
 ok(/env\(safe-area-inset-top\)/.test(html), "header clears the status bar in standalone");
 ok(/env\(safe-area-inset-bottom\)/.test(html), "tab bar clears the home indicator");
 ok(/overscroll-behavior:\s*none/.test(html), "overscroll-behavior:none (no pull-to-refresh in standalone)");
+/* A short page must still scroll: iOS anchors a fixed bottom bar differently on
+   one that cannot, lifting it by the home-indicator inset. */
+ok(/min-height:calc\(100vh \+ 1px\)/.test(html.replace(/\s*\n\s*/g, "")),
+  "every page stays scrollable, so the tab bar is anchored identically on all of them");
+ok(/#tabs::after\{[^}]*background:var\(--panel\)/.test(html.replace(/\s*\n\s*/g, "")),
+  "and the strip under the tab bar can never show as a gap");
 
 /* --- it must behave like an app, not a web page --- */
 ok(/user-scalable=no/.test(html), "viewport forbids user scaling (no pinch-zoom)");

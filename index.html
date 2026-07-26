@@ -53,6 +53,11 @@ body{
   font-size:18px; line-height:1.45;
   overscroll-behavior:none;
   padding-bottom:calc(var(--nav) + 24px + env(safe-area-inset-bottom));
+  /* Every page stays scrollable, even a short one like Projects. iOS anchors a
+     fixed bottom bar differently on a page that cannot scroll -- it lifts it by
+     the home-indicator inset -- so the tab bar jumped up on the one page whose
+     content fitted the screen, and sat correctly on every other. */
+  min-height:calc(100vh + 1px);
   /* No long-press highlight and no "Copy / Look Up / Translate" callout. */
   -webkit-user-select:none; user-select:none;
   -webkit-touch-callout:none;
@@ -303,6 +308,12 @@ select{min-width:110px;}
   display:flex;background:var(--panel);border-top:1px solid var(--line);
   padding:0 0 env(safe-area-inset-bottom);
 }
+/* Belt and braces: whatever the platform does with the bottom inset, the strip
+   under the bar is the bar's own colour rather than a gap. Off screen normally. */
+#tabs::after{
+  content:"";position:absolute;left:0;right:0;top:100%;height:80px;
+  background:var(--panel);
+}
 #tabs button{
   flex:1;background:transparent;border:0;color:var(--faint);
   font-size:14px;font-weight:600;letter-spacing:0.03em;
@@ -415,7 +426,7 @@ select{min-width:110px;}
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.2.0";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.2.1";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */

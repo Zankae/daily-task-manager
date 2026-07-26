@@ -13,7 +13,7 @@
  *
  * Keep CACHE_VERSION in step with APP_VERSION inside index.html.
  */
-const CACHE_VERSION = "daily-task-manager-v2.2.0";
+const CACHE_VERSION = "daily-task-manager-v2.2.1";
 
 const PRECACHE = [
   "./",
