@@ -393,7 +393,7 @@ select{min-width:110px;}
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.1.0";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.1.1";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -1484,8 +1484,10 @@ function taskRow(t,opts){
   const mid=el("div",{class:"tmid",onclick:()=>{
     ui.open=expanded?null:t.id;render();
     if(!expanded){
+      /* Bring the opened task to the top so as much of the editor as will fit
+         is on screen, rather than leaving it half below the fold. */
       const node=document.querySelector('[data-row="'+t.id+'"]');
-      if(node&&node.scrollIntoView)node.scrollIntoView({block:"nearest"});
+      if(node&&node.scrollIntoView)node.scrollIntoView({block:"start"});
     }
   }});
   mid.append(el("div",{class:"ttitle",text:t.title||"Untitled task"}));
@@ -2108,13 +2110,9 @@ function lockDownGestures(){
     if(tag==="INPUT"||tag==="TEXTAREA")return;
     e.preventDefault();
   });
-  /* Double-tap to zoom, for the older WebKit that ignores touch-action. */
-  let lastTap=0;
-  document.addEventListener("touchend",e=>{
-    const now=Date.now();
-    if(now-lastTap<320&&e.cancelable)e.preventDefault();
-    lastTap=now;
-  },{passive:false});
+  /* Double-tap zoom is already gone via touch-action:pan-y. Do not also swallow
+     the second of two quick taps here -- that breaks ticking two tasks off in a
+     row, which is a far worse bug than the one it would guard against. */
 }
 
 /* ================= boot ================= */

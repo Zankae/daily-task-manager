@@ -32,6 +32,7 @@ ok(/-webkit-user-select:\s*none/.test(html), "text is not selectable");
 ok(/input,textarea\{[^}]*-webkit-user-select:\s*text/.test(html.replace(/\s*\n\s*/g, "")),
   "except inside fields, where selecting text is the point");
 ok(/gesturestart/.test(html), "Safari pinch gestures are prevented in script too");
+ok(!/lastTap/.test(html), "no blanket second-tap suppression (it would eat quick taps)");
 ok(/contextmenu/.test(html), "and the long-press menu");
 ok(/button\{-webkit-appearance:none/.test(html.replace(/\s*\n\s*/g, "")),
   "buttons opt out of the iOS push-button box (which drew ellipses, not circles)");
