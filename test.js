@@ -465,6 +465,33 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
   ok(T.isRoutine({ repeat: { kind: "daily" } }), "a daily task counts as routine");
   ok(!T.isRoutine({ repeat: { kind: "weekly" } }), "a weekly one does not");
 
+  /* ISO week numbers, the ones a Swedish calendar shows. Week 1 is the week
+     holding the first Thursday, which is where this gets interesting. */
+  eq(T.isoWeek("2026-07-27"), 31, "Monday 27 July 2026 is week 31");
+  eq(T.isoWeek("2026-08-02"), 31, "the Sunday after it is still week 31");
+  eq(T.isoWeek("2026-08-03"), 32, "and the Monday after that starts week 32");
+  eq(T.isoWeek("2026-01-01"), 1, "1 January 2026 is a Thursday, so it is week 1");
+  eq(T.isoWeek("2025-12-29"), 1, "and the Monday before it already belongs to week 1");
+  eq(T.isoWeek("2025-12-28"), 52, "while the Sunday before that closes week 52 of 2025");
+  eq(T.isoWeek("2026-12-31"), 53, "2026 starts on a Thursday, so it runs to week 53");
+  eq(T.isoWeek("2027-01-03"), 53, "which reaches into January 2027");
+  eq(T.isoWeek("2027-01-04"), 1, "before week 1 of 2027 begins");
+  eq(T.isoWeek("2028-01-01"), 52, "a Saturday 1 January belongs to the old year's week 52");
+  eq(T.isoWeek("2028-01-03"), 1, "and week 1 waits for the Monday");
+  /* every week of a year, in order and without a gap */
+  let wk = T.isoWeek("2026-01-05"), gaps = 0;
+  for (let i = 1; i < 52; i++) {
+    const next = T.isoWeek(T.addDays("2026-01-05", i * 7));
+    if (next !== wk + 1) gaps++;
+    wk = next;
+  }
+  eq(gaps, 0, "the numbers run consecutively through a whole year");
+  /* a week has exactly one number across all seven of its days */
+  const monday = "2026-09-14";
+  const across = [];
+  for (let i = 0; i < 7; i++) across.push(T.isoWeek(T.addDays(monday, i)));
+  eq(new Set(across).size, 1, "and all seven days of a week share it");
+
   /* An interval chore stays due every day until it is actually done, which is
      right on Today but must not paint the whole month. */
   const s2 = base("2026-08-15");

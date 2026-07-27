@@ -679,6 +679,30 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   eq([...$("tabs").querySelectorAll("button")].pop().getAttribute("data-page"), "calendar",
     "and it sits all the way to the right");
   eq(cal.querySelectorAll(".caldow").length, 7, "seven weekday headings");
+
+  /* --- the week-number column --- */
+  const weekCells = () => $("page-calendar").querySelectorAll(".calwk").filter(c => !c.className.includes("head"));
+  ok(cal.querySelector(".calwk.head"), "the column is labelled");
+  eq(cal.querySelector(".calwk.head").textContent, "WEEK", "and says what it is");
+  eq(weekCells().length, cal.querySelectorAll(".calcell").length / 7,
+    "one week number per row of days");
+  const weekNumbers = weekCells().map(c => parseInt(c.textContent, 10));
+  ok(weekNumbers.every(n => n >= 1 && n <= 53), "each is a real ISO week number");
+  ok(weekNumbers.every((n, i) => i === 0 || n === weekNumbers[i - 1] + 1 ||
+      (weekNumbers[i - 1] >= 52 && n === 1)),
+    "and they run consecutively down the month, rolling over at the year");
+  /* the number must be the one for the Monday that starts its row */
+  /* just the body of the grid: the row numbers and the day squares, with the
+     "WEEK" label and the weekday headings left out */
+  const gridKids = [...$("page-calendar").querySelector(".calgrid").children]
+    .filter(c => (c.className.includes("calwk") && !c.className.includes("head")) ||
+                 c.className.includes("calcell"));
+  const firstWeekNo = parseInt(gridKids[0].textContent, 10);
+  const firstDayCell = gridKids[1];
+  ok(/^\d+$/.test(firstDayCell.querySelector(".caldate").textContent),
+    "the row begins with a day square right after its number");
+  eq(firstWeekNo, T.isoWeek(T.calendarDays(T.monthOf(state.today))[0].key),
+    "and the number matches that row's Monday");
   const cells = () => $("page-calendar").querySelectorAll(".calcell");
   ok(cells().length % 7 === 0 && cells().length >= 28, "a whole number of weeks of squares");
   ok(cal.querySelector(".calmonth").textContent.length > 6, "the month is named");

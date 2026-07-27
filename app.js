@@ -13,7 +13,7 @@
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.4.0";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.4.1";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -1529,6 +1529,16 @@ function addMonths(mk,n){
   d.setMonth(d.getMonth()+n);
   return monthOf(dateKey(d));
 }
+/* ISO 8601 week number: weeks run Monday to Sunday, and week 1 is the one
+   holding the first Thursday of the year. That is the numbering used in Sweden,
+   so it is the one that will match every other calendar he looks at. */
+function isoWeek(k){
+  const d=keyToDate(k);
+  const t=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  t.setDate(t.getDate()+3-((t.getDay()+6)%7));   /* to the Thursday of its week */
+  const week1=new Date(t.getFullYear(),0,4);     /* 4 January is always in week 1 */
+  return 1+Math.round(((t-week1)/86400000-3+((week1.getDay()+6)%7))/7);
+}
 function isRoutine(t){return t.repeat&&t.repeat.kind==="daily";}
 /* Does this task light up day k?
 
@@ -1573,18 +1583,24 @@ function renderCalendar(){
     iconBtn("calnav","Next month",()=>{ui.month=addMonths(mk,1);render();},"chev")));
 
   const grid=el("div",{class:"calgrid"});
+  grid.append(el("div",{class:"calwk head",text:"WEEK"}));
   [1,2,3,4,5,6,0].forEach(dw=>grid.append(el("div",{class:"caldow",text:DAYSHORT[dw]})));
-  calendarDays(mk).forEach(c=>{
-    const cls=["calcell"];
-    if(!c.inMonth)cls.push("out");
-    if(c.key===state.today)cls.push("today");
-    if(c.notable)cls.push(c.notable>=3?"lit3":c.notable===2?"lit2":"lit1");
-    grid.append(el("button",{class:cls.join(" "),
-      "aria-label":longDate(c.key)+", "+c.total+" tasks",
-      onclick:()=>dayPopup(c.key)},
-      el("span",{class:"caldate",text:String(c.day)}),
-      c.notable?el("span",{class:"calcount",text:String(c.notable)}):null));
-  });
+  const days=calendarDays(mk);
+  for(let i=0;i<days.length;i+=7){
+    /* the week number belongs to the row, so it leads each one */
+    grid.append(el("div",{class:"calwk",text:String(isoWeek(days[i].key))}));
+    days.slice(i,i+7).forEach(c=>{
+      const cls=["calcell"];
+      if(!c.inMonth)cls.push("out");
+      if(c.key===state.today)cls.push("today");
+      if(c.notable)cls.push(c.notable>=3?"lit3":c.notable===2?"lit2":"lit1");
+      grid.append(el("button",{class:cls.join(" "),
+        "aria-label":longDate(c.key)+", week "+isoWeek(c.key)+", "+c.total+" tasks",
+        onclick:()=>dayPopup(c.key)},
+        el("span",{class:"caldate",text:String(c.day)}),
+        c.notable?el("span",{class:"calcount",text:String(c.notable)}):null));
+    });
+  }
   root.append(grid);
 
   root.append(el("div",{class:"callegend"},
@@ -2061,7 +2077,7 @@ if(typeof module!=="undefined"&&module.exports){
     personalDayKey,dayMinutes,workTimes,isWorkday,ensureToday,
     completeTask,uncompleteTask,skipToday,putOnDay,toSomeday,deleteTask,addTask,
     doneThisWeek,alarmSchedule,makeBackup,readBackup,backupDue,icon,ICONS,ui,
-    calendarDays,monthOf,addMonths,isRoutine,nextMonthlyHint,
+    calendarDays,monthOf,addMonths,isRoutine,nextMonthlyHint,isoWeek,
     parseHM,fmtHM,dateKey,addDays,daysBetween,weekKeyOf,validHM,validKey,clampInt,
     pageFromHash,
     render:typeof render==="function"?render:null
