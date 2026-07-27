@@ -32,11 +32,17 @@ html[data-theme="dark"]{
   --text:#ece9e2; --dim:#98a1ac; --faint:#6b7480;
   --accent:#d9a24b; --accent-soft:#4a3a1c; --accent-ink:#1a1406;
   --good:#84b087; --danger:#c96f6f;
-  /* Lit from somewhere above and slightly warm, with film grain over it. */
+  /* how brightly a calendar day is lit, by how much is on it */
+  --lit1:#2c2517; --lit2:#43351a; --lit3:#5d491d;
+  /* Lit warm from above, cool from below left, with the edges falling away and
+     fine grain over the whole thing to keep the gradients from banding. */
   --wash:
-    radial-gradient(120% 70% at 50% -18%, rgba(217,162,75,0.075), rgba(0,0,0,0) 62%),
-    radial-gradient(100% 60% at 50% 118%, rgba(120,150,190,0.035), rgba(0,0,0,0) 60%);
-  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)' opacity='0.038'/%3E%3C/svg%3E");
+    radial-gradient(150% 115% at 50% 38%, rgba(0,0,0,0) 54%, rgba(0,0,0,0.34) 100%),
+    radial-gradient(1100px 620px at 50% -10%, rgba(217,162,75,0.085), rgba(0,0,0,0) 60%),
+    radial-gradient(780px 540px at 6% 104%, rgba(96,132,178,0.055), rgba(0,0,0,0) 62%),
+    radial-gradient(700px 470px at 98% 74%, rgba(217,162,75,0.032), rgba(0,0,0,0) 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.018), rgba(0,0,0,0) 26%);
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='600' height='600' filter='url(%23g)' opacity='0.03'/%3E%3C/svg%3E");
 }
 html[data-theme="light"]{
   --bg:#f2f0ec; --panel:#ffffff; --panel2:#eceae4; --panel3:#e2dfd7;
@@ -44,6 +50,7 @@ html[data-theme="light"]{
   --text:#26282c; --dim:#5d646d; --faint:#8a9098;
   --accent:#a06a10; --accent-soft:#f6e7c9; --accent-ink:#ffffff;
   --good:#3e7a44; --danger:#a53f3f;
+  --lit1:#f8eeda; --lit2:#f2ddb2; --lit3:#e9cb8b;
   /* Paper: laid fibres one way, a fainter set the other, and tooth over both. */
   --wash:
     repeating-linear-gradient(90deg,
@@ -52,18 +59,37 @@ html[data-theme="light"]{
     repeating-linear-gradient(0deg,
       rgba(120,100,70,0.013) 0px, rgba(120,100,70,0.013) 1px,
       rgba(0,0,0,0) 1px, rgba(0,0,0,0) 7px);
-  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)' opacity='0.055'/%3E%3C/svg%3E");
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='600' height='600' filter='url(%23g)' opacity='0.05'/%3E%3C/svg%3E");
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;color:var(--text);}
 /* The colour lives on html so overscroll never flashes white; the texture is a
    fixed layer behind everything, so body itself stays transparent. */
 html{background:var(--bg);}
-body::before{
-  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background-image:var(--wash),var(--grain);
-  background-size:cover,180px 180px;
-  background-repeat:no-repeat,repeat;
+/* Two layers, deliberately separate.
+
+   They cannot share one declaration: background-size and background-repeat take
+   a list, and CSS cycles a short list across the layers. With one tiled grain
+   over several full-bleed gradients, the gradients inherited "600px, repeat" and
+   tiled -- a radial gradient repeating every tile, which is what drew lines
+   across the background.
+
+   The grain also pins its filter region. The default is 120% of the box, so the
+   stitched unit did not match the tile and left a seam at every edge. */
+body::before,body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;
+}
+body::after{                       /* the light, underneath */
+  z-index:-2;
+  background-image:var(--wash);
+  background-size:cover;
+  background-repeat:no-repeat;
+}
+body::before{                      /* grain over it, so it dithers the gradients */
+  z-index:-1;
+  background-image:var(--grain);
+  background-size:600px 600px;
+  background-repeat:repeat;
 }
 html{
   -webkit-text-size-adjust:100%;
@@ -338,6 +364,59 @@ select{min-width:110px;}
   background:var(--panel2);border:1px solid var(--line);border-radius:12px;
   padding:14px 16px;margin-bottom:8px;color:var(--text);font-size:17px;}
 
+/* ---------- calendar ---------- */
+.calhead{display:flex;align-items:center;gap:12px;margin:2px 0 14px;}
+.calmonth{flex:1;text-align:center;font-size:23px;font-weight:700;letter-spacing:-0.01em;}
+.calnav{
+  flex:none;width:48px;height:48px;padding:0;border-radius:13px;
+  background:var(--panel);border:1px solid var(--line);color:var(--dim);
+  display:flex;align-items:center;justify-content:center;
+}
+.calnav svg{width:22px;height:22px;}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;}
+.caldow{
+  text-align:center;font-size:13px;font-weight:700;letter-spacing:0.07em;
+  text-transform:uppercase;color:var(--faint);padding:0 0 4px;
+}
+.calcell{
+  position:relative;aspect-ratio:1/1;min-height:62px;padding:9px 10px;
+  background:var(--panel);border:1px solid var(--line);border-radius:13px;
+  color:var(--text);font-size:17px;text-align:left;
+  display:block;
+}
+.calcell.out{opacity:.3;}
+.calcell.today{border-color:var(--accent);border-width:2px;padding:8px 9px;}
+.calcell.lit1{background:var(--lit1);}
+.calcell.lit2{background:var(--lit2);}
+.calcell.lit3{background:var(--lit3);}
+.calcell.lit1 .caldate,.calcell.lit2 .caldate,.calcell.lit3 .caldate{
+  color:var(--accent);font-weight:700;
+}
+html[data-theme="light"] .calcell.lit1 .caldate,
+html[data-theme="light"] .calcell.lit2 .caldate,
+html[data-theme="light"] .calcell.lit3 .caldate{color:#7a5209;}
+.caldate{font-variant-numeric:tabular-nums;}
+.calcount{
+  position:absolute;right:9px;bottom:8px;font-size:13px;font-weight:700;
+  color:var(--accent);font-variant-numeric:tabular-nums;
+}
+html[data-theme="light"] .calcount{color:#7a5209;}
+.callegend{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  color:var(--faint);font-size:15px;margin:16px 2px 0;
+}
+.legendswatch{width:16px;height:16px;border-radius:5px;border:1px solid var(--line);flex:none;}
+
+/* a day's tasks, in the popup */
+.dayrow{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;margin-bottom:8px;color:var(--text);
+}
+.dayrow.done{opacity:.5;}
+.dayrow.done .ttitle{text-decoration:line-through;}
+.dayrowtxt{flex:1;min-width:0;}
+
 /* ---------- bottom navigation ---------- */
 #tabs{
   position:fixed;left:0;right:0;bottom:0;z-index:30;
@@ -415,6 +494,7 @@ select{min-width:110px;}
     <section id="page-today" class="page"></section>
     <section id="page-tasks" class="page hidden"></section>
     <section id="page-projects" class="page hidden"></section>
+    <section id="page-calendar" class="page hidden"></section>
     <section id="page-settings" class="page hidden"></section>
   </main>
 </div>
@@ -438,6 +518,16 @@ select{min-width:110px;}
       <path d="M4.4 12.5l7.6 3.9 7.6-3.9"/>
       <path d="M4.4 16.7l7.6 3.9 7.6-3.9"/>
     </svg>Projects</button>
+  <button data-page="calendar">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="3.4" y="5.2" width="17.2" height="15.4" rx="2.6"/>
+      <path d="M3.4 9.8h17.2M8.4 3.4v3.4M15.6 3.4v3.4"/>
+      <circle class="dot" cx="8.3" cy="13.4" r="1.1"/>
+      <circle class="dot" cx="12" cy="13.4" r="1.1"/>
+      <circle class="dot" cx="15.7" cy="13.4" r="1.1"/>
+      <circle class="dot" cx="8.3" cy="17" r="1.1"/>
+      <circle class="dot" cx="12" cy="17" r="1.1"/>
+    </svg>Calendar</button>
 </nav>
 
 <div id="modalHost">
@@ -462,7 +552,7 @@ select{min-width:110px;}
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.3.0";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.4.0";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -1490,7 +1580,8 @@ function timeInput(value,onValue,onDone){return pickerInput("time",value,onValue
 function dateInput(value,onValue,onDone){return pickerInput("date",value,onValue,onDone);}
 
 /* ================= view state ================= */
-const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,notes:null};
+const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,
+          notes:null,month:null};
 
 /* Opening a task is always done through here. The tap that opens one also
    bubbles on to the close-on-outside-tap handler, which would otherwise shut it
@@ -1512,6 +1603,10 @@ function renderHeader(){
   }else if(ui.page==="projects"){
     const n=(state.projects||[]).filter(p=>p.status==="active").length;
     meta=n?n+" project"+(n===1?"":"s"):"No projects yet";
+  }else if(ui.page==="calendar"){
+    const mk=ui.month||monthOf(state.today);
+    const lit=calendarDays(mk).filter(c=>c.inMonth&&c.notable).length;
+    meta=lit?lit+" day"+(lit===1?"":"s")+" with something on":"Nothing beyond the routine";
   }else if(ui.page==="settings"){
     meta="Settings";
   }else{
@@ -1962,6 +2057,128 @@ function renderTasks(){
   }
 }
 
+/* ================= calendar =================
+   A month at a glance. Every square is a day; a lit square has something on it
+   beyond the everyday routine, because a daily task falls on all of them and
+   lighting all thirty would say nothing at all. Tapping a day shows everything
+   on it, including the routine. */
+function monthOf(k){return k.slice(0,7);}
+function addMonths(mk,n){
+  const d=keyToDate(mk+"-01");
+  d.setMonth(d.getMonth()+n);
+  return monthOf(dateKey(d));
+}
+function isRoutine(t){return t.repeat&&t.repeat.kind==="daily";}
+/* Does this task light up day k?
+
+   Not the everyday routine: it falls on every square and so says nothing.
+
+   And not an interval task on every day it is merely still outstanding. An
+   interval chore stays due from the day it comes round until it is actually
+   done -- which is what you want on Today, and what would otherwise paint every
+   remaining day of the month. It lights the day it comes due, and today while
+   it is still hanging over you. */
+function litBy(t,k){
+  if(isRoutine(t))return false;
+  if(t.repeat&&t.repeat.kind==="every")
+    return k===state.today||!dueOn(t,addDays(k,-1));
+  return true;
+}
+function calendarDays(mk){
+  const first=keyToDate(mk+"-01");
+  const start=new Date(first);
+  start.setDate(1-((first.getDay()+6)%7));       /* back to the Monday */
+  const out=[];
+  for(let i=0;i<42;i++){
+    const d=new Date(start.getTime());
+    d.setDate(start.getDate()+i);
+    const k=dateKey(d);
+    const all=tasksFor(k);
+    out.push({key:k,day:d.getDate(),inMonth:d.getMonth()===first.getMonth(),
+              total:all.length,notable:all.filter(t=>litBy(t,k)).length});
+  }
+  /* a trailing week made entirely of the next month is just an empty row */
+  while(out.length>35&&out.slice(-7).every(c=>!c.inMonth))out.length-=7;
+  return out;
+}
+function renderCalendar(){
+  const root=clear(byId("page-calendar"));
+  const mk=ui.month||monthOf(state.today);
+  const d0=keyToDate(mk+"-01");
+
+  root.append(el("div",{class:"calhead"},
+    iconBtn("calnav","Previous month",()=>{ui.month=addMonths(mk,-1);render();},"back"),
+    el("div",{class:"calmonth",text:MONTHS[d0.getMonth()]+" "+d0.getFullYear()}),
+    iconBtn("calnav","Next month",()=>{ui.month=addMonths(mk,1);render();},"chev")));
+
+  const grid=el("div",{class:"calgrid"});
+  [1,2,3,4,5,6,0].forEach(dw=>grid.append(el("div",{class:"caldow",text:DAYSHORT[dw]})));
+  calendarDays(mk).forEach(c=>{
+    const cls=["calcell"];
+    if(!c.inMonth)cls.push("out");
+    if(c.key===state.today)cls.push("today");
+    if(c.notable)cls.push(c.notable>=3?"lit3":c.notable===2?"lit2":"lit1");
+    grid.append(el("button",{class:cls.join(" "),
+      "aria-label":longDate(c.key)+", "+c.total+" tasks",
+      onclick:()=>dayPopup(c.key)},
+      el("span",{class:"caldate",text:String(c.day)}),
+      c.notable?el("span",{class:"calcount",text:String(c.notable)}):null));
+  });
+  root.append(grid);
+
+  root.append(el("div",{class:"callegend"},
+    el("span",{class:"legendswatch",style:"background:var(--lit1)"}),
+    el("span",{class:"legendswatch",style:"background:var(--lit2)"}),
+    el("span",{class:"legendswatch",style:"background:var(--lit3)"}),
+    el("span",{text:"more on the day"})));
+  root.append(el("p",{class:"hint pad",
+    text:"Everyday routines are not counted here, or every square would be lit. Tap a day to see all of it."}));
+
+  if(mk!==monthOf(state.today))
+    root.append(el("div",{class:"btnrow"},
+      el("button",{class:"btn",text:"Back to this month",onclick:()=>{
+        ui.month=monthOf(state.today);render();}})));
+}
+function dayPopup(k){
+  const list=tasksFor(k);
+  const body=el("div",{});
+  if(!list.length)body.append(el("p",{class:"note",text:"Nothing on this day."}));
+  else{
+    const holder=el("div",{});
+    list.forEach(t=>{
+      const done=isDone(k,t.id);
+      const bits=[];
+      if(t.time)bits.push(t.time);
+      if(isRepeating(t))bits.push(repeatLabel(t));
+      if(t.minutes)bits.push("about "+t.minutes+" min");
+      if(done)bits.push("done");
+      holder.append(el("button",{class:"dayrow"+(done?" done":""),
+        onclick:()=>{closeModal();goToTask(t);}},
+        el("span",{class:"dayrowtxt"},
+          el("span",{class:"ttitle",text:t.title||"Untitled task"}),
+          bits.length?el("span",{class:"tsub",text:bits.join("  "+DOT+"  ")}):null),
+        el("span",{class:"chev"},icon("chev"))));
+    });
+    body.append(holder);
+  }
+  body.append(el("div",{class:"btnrow"},
+    el("button",{class:"btn",text:"+  Add a task on this day",onclick:()=>{
+      closeModal();
+      goToTask(addTask({date:k,start:k<state.today?k:state.today}));
+    }})));
+  openModal(longDate(k),body);
+}
+/* Open a task's editor wherever it lives. renderTasks keeps an open task on
+   screen even when its group would filter it out, so this always lands. */
+function goToTask(t){
+  ui.page="tasks";
+  ui.tab=t.bucket==="someday"?"someday":(isRepeating(t)?"repeating":"scheduled");
+  openTask(t.id);
+  render();
+  const node=document.querySelector('[data-row="'+t.id+'"]');
+  if(node&&node.scrollIntoView)node.scrollIntoView({block:"start"});
+}
+
 /* ================= projects ================= */
 function renderProjects(){
   const root=clear(byId("page-projects"));
@@ -2240,11 +2457,12 @@ function render(){
   ensureToday();
   if(ui.notes&&ui.notes!==ui.open)ui.notes=null;
   renderHeader();
-  ["today","tasks","projects","settings"].forEach(n=>{
+  ["today","tasks","projects","calendar","settings"].forEach(n=>{
     byId("page-"+n).classList.toggle("hidden",ui.page!==n);});
   if(ui.page==="today")renderToday();
   else if(ui.page==="tasks")renderTasks();
   else if(ui.page==="projects")renderProjects();
+  else if(ui.page==="calendar")renderCalendar();
   else renderSettings();
   document.querySelectorAll("#tabs button").forEach(b=>{
     b.classList.toggle("on",b.getAttribute("data-page")===ui.page);});
@@ -2281,7 +2499,7 @@ function showUpdateBar(){
 function pageFromHash(){
   if(typeof location==="undefined")return null;
   const h=(location.hash||"").replace("#","");
-  return ["today","tasks","projects","settings"].includes(h)?h:null;
+  return ["today","tasks","projects","calendar","settings"].includes(h)?h:null;
 }
 
 /* Tapping anywhere outside an open task closes it, the same as its Close
@@ -2382,6 +2600,7 @@ if(typeof module!=="undefined"&&module.exports){
     personalDayKey,dayMinutes,workTimes,isWorkday,ensureToday,
     completeTask,uncompleteTask,skipToday,putOnDay,toSomeday,deleteTask,addTask,
     doneThisWeek,alarmSchedule,makeBackup,readBackup,backupDue,icon,ICONS,ui,
+    calendarDays,monthOf,addMonths,isRoutine,nextMonthlyHint,
     parseHM,fmtHM,dateKey,addDays,daysBetween,weekKeyOf,validHM,validKey,clampInt,
     pageFromHash,
     render:typeof render==="function"?render:null

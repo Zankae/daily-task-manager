@@ -45,6 +45,13 @@ secondary, no paused or stored. Tap one to open it: name, notes, and a checklist
 steps with a progress bar. Any step can be pushed onto today with its **Today** button,
 which creates a task linked back to the project.
 
+**Calendar** — the month as a grid of days, with arrows to step through months. A day
+lights up when something is on it, and gets brighter the more there is; the number in the
+corner says how many. Everyday routines are not counted, or every square would be lit and
+the colour would tell you nothing. Tap a day to see everything on it, including the
+routine, and tap any task there to land in its editor. You can also start a task straight
+onto a day from that popup.
+
 **Settings** is the gear in the top corner, not a tab: work and commute times, when the
 day rolls over, gym, theme and sound, backup, and the wall-device export.
 

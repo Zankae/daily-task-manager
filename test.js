@@ -423,6 +423,70 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
   ok(new Set(orders).size === orders.length, "each project has its own place in the order");
 }
 
+/* ================= the calendar month ================= */
+{
+  const s = base("2026-08-15");
+  const daily = () => ({ kind: "daily", days: [], dom: 1, every: 2, unit: "week" });
+  add(s, { title: "Brush teeth", repeat: daily(), start: "2026-01-01" });
+  add(s, { title: "Vacuum", start: "2026-01-01",
+    repeat: { kind: "monthly", days: [], dom: 1, nth: 1, dow: 6, every: 2, unit: "week" } });
+  add(s, { title: "Dentist", date: "2026-08-19", start: "2026-01-01" });
+  add(s, { title: "Ring the optician", date: "2026-08-19", start: "2026-01-01" });
+  add(s, { title: "Shelved", bucket: "someday", start: "2026-01-01" });
+
+  const grid = T.calendarDays("2026-08");
+  eq(grid.length % 7, 0, "the grid is whole weeks");
+  eq(new Date(grid[0].key + "T00:00:00").getDay(), 1, "each row starts on a Monday");
+  ok(grid.some(c => c.inMonth && c.day === 1), "the first of the month is in it");
+  ok(grid.some(c => c.inMonth && c.day === 31), "and the last");
+  eq(grid.filter(c => c.inMonth).length, 31, "August has thirty-one days");
+
+  const at = k => grid.find(c => c.key === k);
+  eq(at("2026-08-01").notable, 1, "the first Saturday is lit by the monthly vacuum");
+  eq(at("2026-08-08").notable, 0, "the second Saturday is not");
+  eq(at("2026-08-19").notable, 2, "a day with two dated tasks counts both");
+  eq(at("2026-08-20").notable, 0, "a plain day is not lit by the daily routine alone");
+  ok(at("2026-08-20").total > 0, "even though the routine is still on it");
+  ok(grid.every(c => c.total >= c.notable), "the routine never goes uncounted in the total");
+  ok(!T.tasksFor("2026-08-19").some(t => t.title === "Shelved"),
+    "nothing on the shelf reaches a day");
+
+  /* month arithmetic, including the ends of the year */
+  eq(T.addMonths("2026-08", 1), "2026-09", "next month");
+  eq(T.addMonths("2026-12", 1), "2027-01", "over the new year");
+  eq(T.addMonths("2026-01", -1), "2025-12", "and back over it");
+  eq(T.monthOf("2026-08-15"), "2026-08", "a day knows its month");
+  /* February, and a leap year */
+  eq(T.calendarDays("2028-02").filter(c => c.inMonth).length, 29, "2028 is a leap year");
+  eq(T.calendarDays("2026-02").filter(c => c.inMonth).length, 28, "2026 is not");
+  /* a month starting on a Sunday must not lose its first week */
+  const nov = T.calendarDays("2026-11");
+  ok(nov.some(c => c.inMonth && c.day === 1), "1 November 2026 is a Sunday and still appears");
+  ok(T.isRoutine({ repeat: { kind: "daily" } }), "a daily task counts as routine");
+  ok(!T.isRoutine({ repeat: { kind: "weekly" } }), "a weekly one does not");
+
+  /* An interval chore stays due every day until it is actually done, which is
+     right on Today but must not paint the whole month. */
+  const s2 = base("2026-08-15");
+  add(s2, { title: "Cables", start: "2026-08-01",
+    repeat: { kind: "every", days: [], dom: 1, every: 2, unit: "week" } });
+  const g2 = T.calendarDays("2026-08");
+  const litOn = g2.filter(c => c.inMonth && c.notable).map(c => c.day);
+  ok(T.dueOn(s2.tasks[0], "2026-08-20") && T.dueOn(s2.tasks[0], "2026-08-21"),
+    "it really is due on every day until done");
+  ok(litOn.length <= 2, "but it lights at most the day it came due and today  (got " +
+    JSON.stringify(litOn) + ")");
+  ok(litOn.indexOf(1) >= 0, "the day it first came due");
+  ok(litOn.indexOf(15) >= 0, "and today, while it is still hanging over you");
+  ok(litOn.indexOf(20) < 0, "not every day after that");
+
+  /* once it has been done, the next occurrence is the one that lights */
+  s2.tasks[0].lastDone = "2026-08-04";
+  const g3 = T.calendarDays("2026-08").filter(c => c.inMonth && c.notable).map(c => c.day);
+  ok(g3.indexOf(18) >= 0, "two weeks after it was done");
+  ok(g3.indexOf(25) < 0, "and not the week after that as well");
+}
+
 /* ================= the alarm schedule (the wall-device seam) ================= */
 {
   const s = base();

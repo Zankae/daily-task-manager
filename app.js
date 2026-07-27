@@ -13,7 +13,7 @@
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.3.0";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.4.0";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -1041,7 +1041,8 @@ function timeInput(value,onValue,onDone){return pickerInput("time",value,onValue
 function dateInput(value,onValue,onDone){return pickerInput("date",value,onValue,onDone);}
 
 /* ================= view state ================= */
-const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,notes:null};
+const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,
+          notes:null,month:null};
 
 /* Opening a task is always done through here. The tap that opens one also
    bubbles on to the close-on-outside-tap handler, which would otherwise shut it
@@ -1063,6 +1064,10 @@ function renderHeader(){
   }else if(ui.page==="projects"){
     const n=(state.projects||[]).filter(p=>p.status==="active").length;
     meta=n?n+" project"+(n===1?"":"s"):"No projects yet";
+  }else if(ui.page==="calendar"){
+    const mk=ui.month||monthOf(state.today);
+    const lit=calendarDays(mk).filter(c=>c.inMonth&&c.notable).length;
+    meta=lit?lit+" day"+(lit===1?"":"s")+" with something on":"Nothing beyond the routine";
   }else if(ui.page==="settings"){
     meta="Settings";
   }else{
@@ -1513,6 +1518,128 @@ function renderTasks(){
   }
 }
 
+/* ================= calendar =================
+   A month at a glance. Every square is a day; a lit square has something on it
+   beyond the everyday routine, because a daily task falls on all of them and
+   lighting all thirty would say nothing at all. Tapping a day shows everything
+   on it, including the routine. */
+function monthOf(k){return k.slice(0,7);}
+function addMonths(mk,n){
+  const d=keyToDate(mk+"-01");
+  d.setMonth(d.getMonth()+n);
+  return monthOf(dateKey(d));
+}
+function isRoutine(t){return t.repeat&&t.repeat.kind==="daily";}
+/* Does this task light up day k?
+
+   Not the everyday routine: it falls on every square and so says nothing.
+
+   And not an interval task on every day it is merely still outstanding. An
+   interval chore stays due from the day it comes round until it is actually
+   done -- which is what you want on Today, and what would otherwise paint every
+   remaining day of the month. It lights the day it comes due, and today while
+   it is still hanging over you. */
+function litBy(t,k){
+  if(isRoutine(t))return false;
+  if(t.repeat&&t.repeat.kind==="every")
+    return k===state.today||!dueOn(t,addDays(k,-1));
+  return true;
+}
+function calendarDays(mk){
+  const first=keyToDate(mk+"-01");
+  const start=new Date(first);
+  start.setDate(1-((first.getDay()+6)%7));       /* back to the Monday */
+  const out=[];
+  for(let i=0;i<42;i++){
+    const d=new Date(start.getTime());
+    d.setDate(start.getDate()+i);
+    const k=dateKey(d);
+    const all=tasksFor(k);
+    out.push({key:k,day:d.getDate(),inMonth:d.getMonth()===first.getMonth(),
+              total:all.length,notable:all.filter(t=>litBy(t,k)).length});
+  }
+  /* a trailing week made entirely of the next month is just an empty row */
+  while(out.length>35&&out.slice(-7).every(c=>!c.inMonth))out.length-=7;
+  return out;
+}
+function renderCalendar(){
+  const root=clear(byId("page-calendar"));
+  const mk=ui.month||monthOf(state.today);
+  const d0=keyToDate(mk+"-01");
+
+  root.append(el("div",{class:"calhead"},
+    iconBtn("calnav","Previous month",()=>{ui.month=addMonths(mk,-1);render();},"back"),
+    el("div",{class:"calmonth",text:MONTHS[d0.getMonth()]+" "+d0.getFullYear()}),
+    iconBtn("calnav","Next month",()=>{ui.month=addMonths(mk,1);render();},"chev")));
+
+  const grid=el("div",{class:"calgrid"});
+  [1,2,3,4,5,6,0].forEach(dw=>grid.append(el("div",{class:"caldow",text:DAYSHORT[dw]})));
+  calendarDays(mk).forEach(c=>{
+    const cls=["calcell"];
+    if(!c.inMonth)cls.push("out");
+    if(c.key===state.today)cls.push("today");
+    if(c.notable)cls.push(c.notable>=3?"lit3":c.notable===2?"lit2":"lit1");
+    grid.append(el("button",{class:cls.join(" "),
+      "aria-label":longDate(c.key)+", "+c.total+" tasks",
+      onclick:()=>dayPopup(c.key)},
+      el("span",{class:"caldate",text:String(c.day)}),
+      c.notable?el("span",{class:"calcount",text:String(c.notable)}):null));
+  });
+  root.append(grid);
+
+  root.append(el("div",{class:"callegend"},
+    el("span",{class:"legendswatch",style:"background:var(--lit1)"}),
+    el("span",{class:"legendswatch",style:"background:var(--lit2)"}),
+    el("span",{class:"legendswatch",style:"background:var(--lit3)"}),
+    el("span",{text:"more on the day"})));
+  root.append(el("p",{class:"hint pad",
+    text:"Everyday routines are not counted here, or every square would be lit. Tap a day to see all of it."}));
+
+  if(mk!==monthOf(state.today))
+    root.append(el("div",{class:"btnrow"},
+      el("button",{class:"btn",text:"Back to this month",onclick:()=>{
+        ui.month=monthOf(state.today);render();}})));
+}
+function dayPopup(k){
+  const list=tasksFor(k);
+  const body=el("div",{});
+  if(!list.length)body.append(el("p",{class:"note",text:"Nothing on this day."}));
+  else{
+    const holder=el("div",{});
+    list.forEach(t=>{
+      const done=isDone(k,t.id);
+      const bits=[];
+      if(t.time)bits.push(t.time);
+      if(isRepeating(t))bits.push(repeatLabel(t));
+      if(t.minutes)bits.push("about "+t.minutes+" min");
+      if(done)bits.push("done");
+      holder.append(el("button",{class:"dayrow"+(done?" done":""),
+        onclick:()=>{closeModal();goToTask(t);}},
+        el("span",{class:"dayrowtxt"},
+          el("span",{class:"ttitle",text:t.title||"Untitled task"}),
+          bits.length?el("span",{class:"tsub",text:bits.join("  "+DOT+"  ")}):null),
+        el("span",{class:"chev"},icon("chev"))));
+    });
+    body.append(holder);
+  }
+  body.append(el("div",{class:"btnrow"},
+    el("button",{class:"btn",text:"+  Add a task on this day",onclick:()=>{
+      closeModal();
+      goToTask(addTask({date:k,start:k<state.today?k:state.today}));
+    }})));
+  openModal(longDate(k),body);
+}
+/* Open a task's editor wherever it lives. renderTasks keeps an open task on
+   screen even when its group would filter it out, so this always lands. */
+function goToTask(t){
+  ui.page="tasks";
+  ui.tab=t.bucket==="someday"?"someday":(isRepeating(t)?"repeating":"scheduled");
+  openTask(t.id);
+  render();
+  const node=document.querySelector('[data-row="'+t.id+'"]');
+  if(node&&node.scrollIntoView)node.scrollIntoView({block:"start"});
+}
+
 /* ================= projects ================= */
 function renderProjects(){
   const root=clear(byId("page-projects"));
@@ -1791,11 +1918,12 @@ function render(){
   ensureToday();
   if(ui.notes&&ui.notes!==ui.open)ui.notes=null;
   renderHeader();
-  ["today","tasks","projects","settings"].forEach(n=>{
+  ["today","tasks","projects","calendar","settings"].forEach(n=>{
     byId("page-"+n).classList.toggle("hidden",ui.page!==n);});
   if(ui.page==="today")renderToday();
   else if(ui.page==="tasks")renderTasks();
   else if(ui.page==="projects")renderProjects();
+  else if(ui.page==="calendar")renderCalendar();
   else renderSettings();
   document.querySelectorAll("#tabs button").forEach(b=>{
     b.classList.toggle("on",b.getAttribute("data-page")===ui.page);});
@@ -1832,7 +1960,7 @@ function showUpdateBar(){
 function pageFromHash(){
   if(typeof location==="undefined")return null;
   const h=(location.hash||"").replace("#","");
-  return ["today","tasks","projects","settings"].includes(h)?h:null;
+  return ["today","tasks","projects","calendar","settings"].includes(h)?h:null;
 }
 
 /* Tapping anywhere outside an open task closes it, the same as its Close
@@ -1933,6 +2061,7 @@ if(typeof module!=="undefined"&&module.exports){
     personalDayKey,dayMinutes,workTimes,isWorkday,ensureToday,
     completeTask,uncompleteTask,skipToday,putOnDay,toSomeday,deleteTask,addTask,
     doneThisWeek,alarmSchedule,makeBackup,readBackup,backupDue,icon,ICONS,ui,
+    calendarDays,monthOf,addMonths,isRoutine,nextMonthlyHint,
     parseHM,fmtHM,dateKey,addDays,daysBetween,weekKeyOf,validHM,validKey,clampInt,
     pageFromHash,
     render:typeof render==="function"?render:null

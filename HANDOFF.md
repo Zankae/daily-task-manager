@@ -108,6 +108,20 @@ Without a version bump, browsers keep serving the cached old app.
   due today, or move it between Tasks groups. `renderToday()` and `renderTasks()` both
   keep `ui.open` on screen regardless, so the thing being edited never vanishes
   mid-sentence; it drops off once closed.
+- **The background is two pseudo-elements, never one.** `body::after` carries the light
+  (`--wash`, several gradients, `cover`/`no-repeat`); `body::before` carries the grain
+  (`--grain`, one tiled SVG). They must not share a declaration: `background-size` and
+  `background-repeat` take a list and CSS **cycles a short list across the layers**, so a
+  single tiled grain over several gradients made the gradients tile too — a radial
+  gradient repeating every tile, drawn as lines across the screen. The grain's SVG filter
+  also pins `x/y/width/height`, because the default region is 120% of the box and the
+  stitched unit then does not match the tile.
+- **The calendar lights what is worth seeing.** `litBy()` decides: never the everyday
+  routine, since a daily task falls on every square and would light the whole month; and
+  an interval chore only on the day it comes due plus today while it is still outstanding,
+  because `dueOn` keeps it due every day until it is actually done. That stickiness is
+  right for Today and would otherwise paint every remaining day. The day popup still shows
+  the full truth for that day.
 - **Editor sections are boxes, not divider lines.** Each is an `.esec` a step lighter than
   the row behind it (`--panel2` on `--panel`), with its controls a step lighter again
   (`--panel3`) so they lift off it. Never render an `.esec` with no title or no content —

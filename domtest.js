@@ -205,11 +205,13 @@ body.append(
     build("section", { id: "page-today", class: "page" }),
     build("section", { id: "page-tasks", class: "page hidden" }),
     build("section", { id: "page-projects", class: "page hidden" }),
+    build("section", { id: "page-calendar", class: "page hidden" }),
     build("section", { id: "page-settings", class: "page hidden" }))),
   build("nav", { id: "tabs" },
     build("button", { "data-page": "today", class: "on" }, "Today"),
     build("button", { "data-page": "tasks" }, "Tasks"),
-    build("button", { "data-page": "projects" }, "Projects")),
+    build("button", { "data-page": "projects" }, "Projects"),
+    build("button", { "data-page": "calendar" }, "Calendar")),
   build("div", { id: "modalHost" }, build("div", { class: "veil" }), build("div", { id: "modalBox" })),
   build("div", { id: "toast" })
 );
@@ -664,6 +666,80 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
     ok(new Set(after).size === 4, "no duplicates and nothing dropped");
     rows.forEach(r => { delete r._h; });
   }
+
+  /* ================= the calendar ================= */
+  tab("today").fire("click");
+  /* something dated, so a square is certain to be lit */
+  const dated = T.addTask({ title: "See the dentist", date: T.addDays(state.today, 3),
+    start: state.today });
+  T.setState(state);
+  tab("calendar").fire("click");
+  const cal = $("page-calendar");
+  ok(!cal.classList.contains("hidden"), "the fourth tab opens the calendar");
+  eq([...$("tabs").querySelectorAll("button")].pop().getAttribute("data-page"), "calendar",
+    "and it sits all the way to the right");
+  eq(cal.querySelectorAll(".caldow").length, 7, "seven weekday headings");
+  const cells = () => $("page-calendar").querySelectorAll(".calcell");
+  ok(cells().length % 7 === 0 && cells().length >= 28, "a whole number of weeks of squares");
+  ok(cal.querySelector(".calmonth").textContent.length > 6, "the month is named");
+  ok(cells().some(c => c.className.includes("today")), "today is marked");
+  const litNow = cells().filter(c => /lit/.test(c.className));
+  ok(litNow.length > 0, "days with something on them are lit");
+  ok(litNow.every(c => c.querySelector(".calcount")), "and carry a count");
+  /* the daily routine alone must not light a square */
+  const plainDay = cells().find(c => !/lit|out/.test(c.className));
+  ok(!!plainDay, "a day of routine only is left unlit");
+
+  /* stepping months */
+  const monthName = () => $("page-calendar").querySelector(".calmonth").textContent;
+  const thisMonth = monthName();
+  const navs = cal.querySelectorAll(".calnav");
+  eq(navs.length, 2, "a way back and a way forward");
+  navs[1].fire("click");
+  ok(monthName() !== thisMonth, "forward moves to another month");
+  $("page-calendar").querySelectorAll(".calnav")[0].fire("click");
+  eq(monthName(), thisMonth, "and back again");
+  /* twelve steps forward lands a year on */
+  for (let i = 0; i < 12; i++) $("page-calendar").querySelectorAll(".calnav")[1].fire("click");
+  const yr = parseInt(thisMonth.split(" ")[1], 10);
+  eq(monthName(), thisMonth.split(" ")[0] + " " + (yr + 1), "twelve months on is the next year");
+  ok(btnHas($("page-calendar"), "Back to this month"), "with a way back to now");
+  btnHas($("page-calendar"), "Back to this month").fire("click");
+  eq(monthName(), thisMonth, "which returns to the current month");
+
+  /* tapping a day */
+  const litCell = $("page-calendar").querySelectorAll(".calcell").find(c => /lit/.test(c.className));
+  litCell.fire("click");
+  ok($("modalHost").classList.contains("open"), "tapping a day opens a popup");
+  const rowsInPopup = $("modalHost").querySelectorAll(".dayrow");
+  ok(rowsInPopup.length > 0, "listing what is on that day");
+  ok($("modalHost").textContent.length > 10, "under the date as its title");
+  /* and the popup shows the routine too, even though it did not light the square */
+  const anyDay = $("modalHost").textContent;
+  ok(/Brush teeth|See the dentist|gym/i.test(anyDay), "with real task names in it");
+
+  /* tapping a task goes to its editor */
+  const target = rowsInPopup[0];
+  const wantedTitle = target.querySelector(".ttitle").textContent;
+  target.fire("click");
+  ok(!$("modalHost").classList.contains("open"), "which closes the popup");
+  ok(!$("page-tasks").classList.contains("hidden"), "and lands on the task list");
+  const openRow = $("page-tasks").querySelectorAll(".task").find(r => r.querySelector(".editor"));
+  ok(!!openRow, "with an editor open");
+  eq(openRow.querySelector(".titleInput").value, wantedTitle, "on the task that was tapped");
+  T.deleteTask(dated.id);
+
+  /* adding straight onto a day */
+  tab("calendar").fire("click");
+  const before2 = state.tasks.length;
+  $("page-calendar").querySelectorAll(".calcell")[8].fire("click");
+  btnHas($("modalHost"), "Add a task on this day").fire("click");
+  eq(state.tasks.length, before2 + 1, "a day popup can start a task on that day");
+  const made = state.tasks[state.tasks.length - 1];
+  ok(!!made.date, "dated to the day that was tapped");
+  ok(!$("page-tasks").classList.contains("hidden") && T.ui.open === made.id,
+    "and opens it ready to name");
+  T.deleteTask(made.id);
 
   /* ================= it must look drawn, not typed =================
      Characters like U+2699 GEAR and U+23F0 ALARM CLOCK come out as colour

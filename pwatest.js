@@ -51,7 +51,7 @@ ok(!emoji, "no symbol characters in the markup" +
   (emoji ? " (found U+" + emoji[0].codePointAt(0).toString(16).toUpperCase() + ")" : ""));
 ok(/<svg viewBox="0 0 24 24"[^>]*>/.test(html), "icons are inline SVG");
 ok(/id="gear"[\s\S]{0,120}<svg/.test(html), "the settings control is a drawn icon");
-ok((html.match(/<button data-page="[a-z]+"[^>]*>\s*<svg/g) || []).length === 3,
+ok((html.match(/<button data-page="[a-z]+"[^>]*>\s*<svg/g) || []).length === 4,
   "each tab has a drawn icon");
 ok(/#gear\{[^}]*align-items:center/.test(html.replace(/\s*\n\s*/g, "")),
   "the settings icon is centred in its button");
@@ -63,8 +63,17 @@ const flat = html.replace(/\s*\n\s*/g, "");
 ok(/:focus\{outline:none/.test(flat), "the blue platform focus ring is off");
 ok(/input\[type="number"\]:focus,select:focus,textarea:focus\{border-color:var\(--accent\)/.test(flat),
   "replaced by one quiet accent border, the same on every kind of field");
-ok(/body::before\{[^}]*background-image:var\(--wash\),var\(--grain\)/.test(flat),
-  "a texture layer sits behind the whole app");
+ok(/body::after\{[^}]*background-image:var\(--wash\);background-size:cover;background-repeat:no-repeat/.test(flat),
+  "the light layer is full-bleed and never tiled");
+ok(/body::before\{[^}]*background-image:var\(--grain\);background-size:600px 600px;background-repeat:repeat/.test(flat),
+  "and the grain tiles on its own, so a short size list cannot cycle onto the gradients");
+/* The default filter region is 120% of the box, so the stitched unit did not
+   match the tile and left a seam every tile-height -- lines across the screen. */
+ok(!/feTurbulence/.test(flat.replace(/filter id='g' x='0' y='0' width='100%25' height='100%25'/g, "")) ||
+   (flat.match(/filter id='g' x='0' y='0'/g) || []).length === 2,
+  "both grains pin the filter region so the noise tiles seamlessly");
+ok((flat.match(/width='600' height='600'/g) || []).length === 4,
+  "and tile large enough that the repeat is never visible on this screen");
 ok(/html\[data-theme="dark"\]\{[^}]*--grain:url\("data:image\/svg\+xml/.test(flat),
   "dark has its own grain");
 ok(/html\[data-theme="light"\]\{[^}]*--grain:url\("data:image\/svg\+xml/.test(flat),
@@ -93,7 +102,7 @@ ok(sizes.includes("512x512"), "manifest declares a 512px icon");
 ok(manifest.icons.some(i => i.purpose === "maskable"), "manifest declares a maskable icon");
 manifest.icons.forEach(i => ok(fs.existsSync(path.join(__dirname, i.src)), "icon file exists: " + i.src));
 (manifest.shortcuts || []).forEach(s =>
-  ok(/^\.\/#(today|tasks|projects|settings)$/.test(s.url), "shortcut points at a real page: " + s.url));
+  ok(/^\.\/#(today|tasks|projects|calendar|settings)$/.test(s.url), "shortcut points at a real page: " + s.url));
 
 /* --- icons on disk --- */
 const png = f => {
