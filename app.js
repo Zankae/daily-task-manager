@@ -13,7 +13,7 @@
    =========================================================================== */
 
 /* ================= constants ================= */
-const APP_VERSION="2.2.1";          /* keep in step with CACHE_VERSION in sw.js */
+const APP_VERSION="2.3.0";          /* keep in step with CACHE_VERSION in sw.js */
 const SCHEMA_VERSION=2;
 const LS_KEY="dailyTaskManagerV2";
 const LS_KEY_V1="dailyTaskManagerV1";   /* read once for migration, never written */
@@ -113,6 +113,10 @@ function sanitizeTask(t){
       kind:kind,
       days:Array.isArray(r.days)?r.days.map(Number).filter(n=>n>=0&&n<=6).slice(0,7):[],
       dom:clampInt(r.dom,1,31,1),
+      /* A monthly task is either on a date (dom) or on the nth weekday of the
+         month (nth + dow), which is how "first Saturday" is expressed. */
+      nth:[1,2,3,4,-1].indexOf(Number(r.nth))>=0?Number(r.nth):null,
+      dow:(r.dow===null||r.dow===undefined||isNaN(parseInt(r.dow,10)))?null:clampInt(r.dow,0,6,0),
       every:clampInt(r.every,1,365,2),
       unit:["day","week","month"].includes(r.unit)?r.unit:"week"
     },
@@ -131,8 +135,10 @@ function sanitizeTask(t){
     doneDates:(Array.isArray(t.doneDates)?t.doneDates:[]).filter(validKey).slice(-80)
   };
   if(out.repeat.kind==="weekly"&&!out.repeat.days.length)out.repeat.days=[dowOf(out.start)];
+  if(out.repeat.nth!==null&&out.repeat.dow===null)out.repeat.dow=dowOf(out.start);
   return out;
 }
+const NTH={"1":"First","2":"Second","3":"Third","4":"Fourth","-1":"Last"};
 function sanitizeStep(s){
   s=s||{};
   return {id:typeof s.id==="string"&&s.id?s.id.slice(0,40):uid(),
@@ -151,6 +157,12 @@ function dueOn(t,k){
   if(r.kind==="monthly"){
     const d=keyToDate(k);
     const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    if(r.nth){
+      if(d.getDay()!==r.dow)return false;
+      /* Last of its kind: no further same weekday fits inside the month. */
+      if(r.nth===-1)return d.getDate()+7>last;
+      return Math.floor((d.getDate()-1)/7)+1===r.nth;
+    }
     return d.getDate()===Math.min(r.dom||1,last);
   }
   if(r.kind==="every"){
@@ -169,7 +181,10 @@ function repeatLabel(t){
     if(d.length===7)return "Every day";
     return d.length?d.map(n=>DAYSHORT[n]).join(" "):"Weekly";
   }
-  if(r.kind==="monthly")return "Day "+r.dom+" of the month";
+  if(r.kind==="monthly"){
+    if(r.nth)return NTH[String(r.nth)]+" "+DAYNAMES[r.dow]+" of the month";
+    return "Day "+r.dom+" of the month";
+  }
   if(r.kind==="every"){
     const n=r.every||1;
     return "Every "+(n===1?"":n+" ")+r.unit+(n===1?"":"s");
@@ -178,6 +193,23 @@ function repeatLabel(t){
   return "No date";
 }
 function isRepeating(t){return t.repeat&&t.repeat.kind!=="once";}
+/* "First Saturday" lands on a different date every month, so show the next few
+   it actually falls on rather than asking anyone to take it on trust. */
+function nextMonthlyHint(r,from){
+  const out=[];
+  let k=from;
+  for(let i=0;i<400&&out.length<3;i++){
+    const d=keyToDate(k);
+    if(d.getDay()===r.dow){
+      const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+      const hit=r.nth===-1 ? d.getDate()+7>last
+                           : Math.floor((d.getDate()-1)/7)+1===r.nth;
+      if(hit)out.push(shortDate(k));
+    }
+    k=addDays(k,1);
+  }
+  return out.length?"Next: "+out.join(", "):null;
+}
 function doneThisWeek(t,k){
   const wk=weekKeyOf(k);
   return (t.doneDates||[]).filter(d=>weekKeyOf(d)===wk).length;
@@ -992,9 +1024,21 @@ function numInput(value,onchange,min,max){
     value:value===null||value===undefined?"":String(value),
     onchange:e=>onchange(e.target.value)});
 }
-function timeInput(value,onchange){
-  return el("input",{type:"time",value:value||"",onchange:e=>onchange(e.target.value)});
+/* The native time and date pickers are popovers anchored to their input.
+   Re-rendering while one is open destroys that input and dismisses the popover,
+   which is why setting the hour used to close the wheel before the minutes
+   could be set. So the value is taken as it changes but nothing is rebuilt
+   until the field is finished with -- Done, or a tap elsewhere. */
+function pickerInput(type,value,onValue,onDone){
+  const inp=el("input",{type:type,value:value||""});
+  const take=e=>{onValue(e.target.value);};
+  inp.addEventListener("input",take);
+  inp.addEventListener("change",take);
+  inp.addEventListener("blur",()=>{if(onDone)onDone();});
+  return inp;
 }
+function timeInput(value,onValue,onDone){return pickerInput("time",value,onValue,onDone);}
+function dateInput(value,onValue,onDone){return pickerInput("date",value,onValue,onDone);}
 
 /* ================= view state ================= */
 const ui={page:"today",open:null,tab:"repeating",project:null,showDone:false,notes:null};
@@ -1036,6 +1080,13 @@ function renderToday(){
   if(isWorkday(k))root.append(workCard(k));
 
   const list=tasksFor(k);
+  /* A task being edited stays on screen even if the edit just made it not due
+     today. Retuning a schedule must not make the thing you are editing vanish
+     out from under you; it drops off the list once you close it. */
+  if(ui.open&&!list.some(t=>t.id===ui.open)){
+    const held=findTask(ui.open);
+    if(held)list.push(held);
+  }
   const open=list.filter(t=>!isDone(k,t.id));
   const done=list.filter(t=>isDone(k,t.id));
 
@@ -1231,9 +1282,35 @@ function taskEditor(t,k){
         redraw();
       }));
     if(t.repeat.kind==="weekly")parts.push(dayPills(t.repeat.days,()=>redraw()));
-    if(t.repeat.kind==="monthly")
-      parts.push(field("Day of the month",numInput(t.repeat.dom,v=>{
-        t.repeat.dom=clampInt(v,1,31,1);redraw();},1,31)));
+    if(t.repeat.kind==="monthly"){
+      /* Monthly means one of two things, and "first Saturday" is the one a
+         date cannot express. Both fit on one line, and neither is visible
+         unless Monthly is the chosen frequency. */
+      parts.push(segmented([["date","On a date"],["weekday","On a weekday"]],
+        t.repeat.nth?"weekday":"date",v=>{
+          if(v==="weekday"){
+            /* Default to the occurrence today actually is, so switching does
+               not silently move the task off today's list. */
+            if(!t.repeat.nth)t.repeat.nth=Math.floor((keyToDate(k).getDate()-1)/7)+1;
+            if(t.repeat.dow===null||t.repeat.dow===undefined)t.repeat.dow=dowOf(k);
+          }else t.repeat.nth=null;
+          redraw();}));
+      if(t.repeat.nth){
+        const nthSel=el("select",{onchange:e=>{
+            t.repeat.nth=parseInt(e.target.value,10);redraw();}},
+          [1,2,3,4,-1].map(v=>el("option",{value:String(v),
+            selected:t.repeat.nth===v,text:NTH[String(v)]})));
+        const dowSel=el("select",{onchange:e=>{
+            t.repeat.dow=parseInt(e.target.value,10);redraw();}},
+          [1,2,3,4,5,6,0].map(d=>el("option",{value:String(d),
+            selected:t.repeat.dow===d,text:DAYNAMES[d]})));
+        parts.push(field("On the",el("div",{class:"inline"},nthSel,dowSel),
+          nextMonthlyHint(t.repeat,k)));
+      }else{
+        parts.push(field("Day of the month",numInput(t.repeat.dom,v=>{
+          t.repeat.dom=clampInt(v,1,31,1);redraw();},1,31)));
+      }
+    }
     if(t.repeat.kind==="every"){
       const n=numInput(t.repeat.every,v=>{t.repeat.every=clampInt(v,1,365,1);redraw();},1,365);
       const unit=el("select",{onchange:e=>{t.repeat.unit=e.target.value;redraw();}},
@@ -1249,8 +1326,7 @@ function taskEditor(t,k){
     b.append(esec("How often",parts));
   }else{
     b.append(esec("When",
-      field("Date",el("input",{type:"date",value:t.date||"",
-        onchange:e=>{t.date=validKey(e.target.value)?e.target.value:null;redraw();}}),
+      field("Date",dateInput(t.date,v=>{t.date=validKey(v)?v:null;save();},redraw),
         t.date?null:"With no date it stays out of the way until you pick one."),
       el("button",{class:"btn quiet small",text:"Make it repeat instead",onclick:()=>{
         t.repeat.kind="weekly";
@@ -1262,7 +1338,7 @@ function taskEditor(t,k){
   if(!shelved)
     b.append(esec(t.time?"Time and alarm":"Time",
       field("Clock time",el("div",{class:"inline"},
-        timeInput(t.time,v=>{t.time=validHM(v)?v:null;if(!t.time)t.alarm=false;redraw();}),
+        timeInput(t.time,v=>{t.time=validHM(v)?v:null;if(!t.time)t.alarm=false;save();},redraw),
         t.time?el("button",{class:"btn quiet small",text:"Clear",onclick:()=>{
           t.time=null;t.alarm=false;redraw();}}):null)),
       /* No dead switch: the alarm appears once there is a time for it to ring at. */
@@ -1391,6 +1467,12 @@ function renderTasks(){
   root.append(el("p",{class:"hint pad",text:hints[ui.tab]}));
 
   const list=groups[ui.tab];
+  /* Same again: turning a repeating task into a one-off moves it to another
+     group, and it should not disappear mid-edit. */
+  if(ui.open&&!list.some(t=>t.id===ui.open)){
+    const held=findTask(ui.open);
+    if(held&&!held.archived)list.push(held);
+  }
   if(!list.length){
     root.append(el("div",{class:"card empty"},el("p",{text:"Nothing here."})));
   }else{
@@ -1583,9 +1665,9 @@ function renderSettings(){
   w.append(el("label",{class:"blab",text:"Workdays"}));
   w.append(dayPills(p.workdays,()=>redraw()));
   w.append(field("Shift starts",timeInput(p.shiftStart,v=>{
-    if(validHM(v))p.shiftStart=v;redraw();})));
+    if(validHM(v))p.shiftStart=v;save();},redraw)));
   w.append(field("Shift ends",timeInput(p.shiftEnd,v=>{
-    if(validHM(v))p.shiftEnd=v;redraw();})));
+    if(validHM(v))p.shiftEnd=v;save();},redraw)));
   w.append(field("Normal commute",minutesField(p,"commuteNormal",redraw)));
   w.append(field("Slow-traffic commute",minutesField(p,"commuteSlow",redraw)));
   w.append(field("Parking and walking",minutesField(p,"parkingWalk",redraw)));
@@ -1600,7 +1682,7 @@ function renderSettings(){
   root.append(el("h2",{class:"sect",text:"The day"}));
   const d=el("div",{class:"card"});
   d.append(field("Day rolls over at",timeInput(p.dayReset,v=>{
-    if(validHM(v))p.dayReset=v;state.today=null;ensureToday();redraw();}),
+    if(validHM(v))p.dayReset=v;save();},()=>{state.today=null;ensureToday();redraw();}),
     "Work after midnight still belongs to the day before. Everything is ordered from this time."));
   d.append(field("Usual waking time",timeInput(p.wakeTime,v=>{if(validHM(v))p.wakeTime=v;save();})));
   d.append(field("Usual sleep time",timeInput(p.sleepTime,v=>{if(validHM(v))p.sleepTime=v;save();})));

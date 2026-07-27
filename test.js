@@ -85,6 +85,40 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
   ok(T.dueOn(m, "2026-09-30"), "day 31 falls back to the last day of a short month");
   ok(!T.dueOn(m, "2026-09-29"), "and not the day before that");
 
+  /* "the first Saturday every month" -- a date cannot express it */
+  const nth = (n, d) => ({ kind: "monthly", days: [], dom: 1, nth: n, dow: d, every: 2, unit: "week" });
+  const firstSat = add(s, { title: "Vacuum the whole apartment", repeat: nth(1, 6), start: "2026-01-01" });
+  ok(T.dueOn(firstSat, "2026-08-01"), "1 Aug 2026 is the first Saturday");
+  ok(!T.dueOn(firstSat, "2026-08-08"), "the second Saturday is not");
+  ok(T.dueOn(firstSat, "2026-09-05"), "5 Sep 2026 is the first Saturday");
+  ok(!T.dueOn(firstSat, "2026-09-04"), "and the Friday before is not");
+  ok(T.dueOn(firstSat, "2026-02-07"), "February works too");
+  ok(!T.dueOn(firstSat, "2026-08-02"), "a Sunday never matches a Saturday rule");
+  eq(T.repeatLabel(firstSat), "First Saturday of the month", "and it says so plainly");
+
+  const thirdMon = add(s, { title: "Third Monday", repeat: nth(3, 1), start: "2026-01-01" });
+  ok(T.dueOn(thirdMon, "2026-08-17"), "the third Monday of August 2026");
+  ok(!T.dueOn(thirdMon, "2026-08-10"), "not the second");
+  ok(!T.dueOn(thirdMon, "2026-08-24"), "not the fourth");
+
+  const lastFri = add(s, { title: "Last Friday", repeat: nth(-1, 5), start: "2026-01-01" });
+  ok(T.dueOn(lastFri, "2026-07-31"), "the last Friday of July 2026");
+  ok(!T.dueOn(lastFri, "2026-07-24"), "not the one before it");
+  ok(T.dueOn(lastFri, "2026-08-28"), "the last Friday of August 2026");
+  ok(!T.dueOn(lastFri, "2026-08-21"), "again not the one before");
+  eq(T.repeatLabel(lastFri), "Last Friday of the month", "and reads as Last");
+  /* a month with five Fridays must pick the fifth, not the fourth */
+  ok(T.dueOn(lastFri, "2026-10-30") && !T.dueOn(lastFri, "2026-10-23"),
+    "in a five-Friday month it is the fifth");
+  /* exactly one match per month, every month, for two years */
+  let months = {};
+  for (let i = 0; i < 730; i++) {
+    const k = T.addDays("2026-01-01", i);
+    if (T.dueOn(firstSat, k)) months[k.slice(0, 7)] = (months[k.slice(0, 7)] || 0) + 1;
+  }
+  ok(Object.keys(months).length === 24, "it lands in all twenty-four months");
+  ok(Object.keys(months).every(m => months[m] === 1), "exactly once in each");
+
   const e = add(s, { title: "Cables", repeat: every(2, "week"), start: SUN });
   ok(T.dueOn(e, SUN), "an interval task that has never been done is due now");
   e.lastDone = SUN;
@@ -342,7 +376,17 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
   const gym = byTitle("Go to the gym")[0];
   eq(gym.repeat.days.join(","), "2,4,6,0", "gym days carry over");
   eq(gym.weeklyTarget, 4, "with the four-a-week target");
-  eq(T.doneThisWeek(gym, today), 2, "and this week's count is not lost");
+  /* The sessions are placed on gym days that have already happened this week,
+     so how many fit depends on which day of the week the migration runs. Assert
+     the properties that hold on every day of the year, not a fixed count. */
+  ok(gym.doneDates.length <= 2, "no more sessions are invented than were recorded");
+  ok(gym.doneDates.every(d => T.weekKeyOf(d) === T.weekKeyOf(today)),
+    "every carried session lands in the current week");
+  ok(gym.doneDates.every(d => T.daysBetween(d, today) >= 0),
+    "and never in the future");
+  ok(gym.doneDates.every(d => gym.repeat.days.indexOf(new Date(d + "T00:00:00").getDay()) >= 0),
+    "and only on an actual gym day");
+  eq(T.doneThisWeek(gym, today), gym.doneDates.length, "the weekly count reads them back");
 
   /* a version 1 backup file goes through the same path */
   const r = T.readBackup({ app: "daily-task-manager", schemaVersion: 1, data: v1 });
@@ -368,7 +412,10 @@ const every = (n, u) => ({ kind: "every", days: [], dom: 1, every: n, unit: u })
     "or a clock time it could not honour");
   ok(s.tasks.some(t => t.repeat.kind === "every" && t.bucket === "active"),
     "while recurring maintenance sits on real days");
-  ok(T.tasksFor(SUN).length > 0, "and today already has a list");
+  /* Seeds start on the real today, and nothing is ever due before it existed,
+     so ask about today rather than a fixed date in the past. */
+  s.today = T.dateKey(new Date());
+  ok(T.tasksFor(s.today).length > 0, "and today already has a list");
   ok(s.tasks.every(t => t.title.length > 0), "nothing ships untitled");
   ok(s.projects.length === 4 && s.projects.every(p => p.status === "active"),
     "projects start as a plain ordered list, with no primary or secondary");

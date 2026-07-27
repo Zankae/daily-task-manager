@@ -313,6 +313,31 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   ok(ed2().textContent.includes("Day of the month"), "with the day of the month");
   ok(!ed2().textContent.includes("Times a week"),
     "but a monthly task is not asked for a weekly target");
+
+  /* --- "the first Saturday every month", which a date cannot express --- */
+  ok(btn(ed2(), "On a weekday"), "monthly offers a weekday rule as well as a date");
+  btn(ed2(), "On a weekday").fire("click");
+  ok(task.repeat.nth !== null, "choosing it sets an occurrence");
+  ok(!ed2().textContent.includes("Day of the month"),
+    "and the day-of-the-month field steps aside");
+  const sels = ed2().querySelectorAll("select");
+  ok(sels.length >= 2, "an occurrence and a weekday to pick");
+  const nthSel = sels[0], dowSel = sels[1];
+  nthSel.value = "1"; nthSel.fire("change");
+  dowSel.value = "6"; dowSel.fire("change");
+  eq(task.repeat.nth, 1, "first");
+  eq(task.repeat.dow, 6, "Saturday");
+  eq(T.repeatLabel(task), "First Saturday of the month", "reads back plainly");
+  ok(T.dueOn(task, "2026-08-01") && !T.dueOn(task, "2026-08-08"),
+    "and lands on the first Saturday only");
+  ok(/Next: /.test(ed2().textContent), "the next few dates are shown to confirm it");
+  /* last-of-month is reachable too */
+  nthSel.value = "-1"; nthSel.fire("change");
+  eq(T.repeatLabel(task), "Last Saturday of the month", "Last is offered as well");
+  /* and back to a plain date */
+  btn(ed2(), "On a date").fire("click");
+  eq(task.repeat.nth, null, "switching back clears the weekday rule");
+  ok(ed2().textContent.includes("Day of the month"), "and the date field returns");
   btn(ed2(), "Every day").fire("click");
   eq(task.repeat.kind, "daily", "and back to daily");
 
@@ -326,14 +351,25 @@ const btnHas = (root, text) => root.querySelectorAll("button").find(b => b.textC
   eq(task.repeat.kind, "weekly", "and it can be turned back into a repeating task");
   btn(ed2(), "Every day").fire("click");
 
-  /* --- time and alarm: the old Alarms page, now inside the task --- */
+  /* --- time and alarm: the old Alarms page, now inside the task ---
+     The native picker is a popover anchored to its input. Rebuilding the
+     editor mid-scroll destroys that input and dismisses the wheel, which is
+     why setting the hour used to close it before the minutes could be set. */
   ok(!ed2().querySelector(".switch"), "no alarm switch until there is a time to ring at");
-  const timeInp = ed2().querySelectorAll("input").find(i => i.getAttribute("type") === "time");
-  timeInp.value = "07:30";
+  const timeField = () => ed2().querySelectorAll("input").find(i => i.getAttribute("type") === "time");
+  const timeInp = timeField();
+  timeInp.value = "07:00";                       /* the hour wheel */
+  timeInp.fire("input");
+  ok(timeField() === timeInp, "the field survives spinning the hour");
+  timeInp.value = "07:30";                       /* then the minute wheel */
   timeInp.fire("change");
-  eq(task.time, "07:30", "a clock time can be set in the task");
+  ok(timeField() === timeInp, "and survives spinning the minutes");
+  eq(task.time, "07:30", "the time is kept as it is chosen");
+  ok(!ed2().querySelector(".switch"),
+    "nothing is rebuilt while the picker is still open");
+  timeInp.fire("blur");                          /* Done */
   const sw = ed2().querySelector(".switch input");
-  ok(!!sw, "then the alarm switch appears");
+  ok(!!sw, "the alarm switch appears once the picker is finished with");
   sw.checked = true;
   sw.fire("change");
   eq(task.alarm, true, "and can be armed");

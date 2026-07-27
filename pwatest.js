@@ -57,6 +57,26 @@ ok(/#gear\{[^}]*align-items:center/.test(html.replace(/\s*\n\s*/g, "")),
   "the settings icon is centred in its button");
 ok(/\.check\{[^}]*aspect-ratio:1\/1/.test(html.replace(/\s*\n\s*/g, "")),
   "the completion circle is pinned square");
+
+/* --- no platform focus ring, and a texture behind everything --- */
+const flat = html.replace(/\s*\n\s*/g, "");
+ok(/:focus\{outline:none/.test(flat), "the blue platform focus ring is off");
+ok(/input\[type="number"\]:focus,select:focus,textarea:focus\{border-color:var\(--accent\)/.test(flat),
+  "replaced by one quiet accent border, the same on every kind of field");
+ok(/body::before\{[^}]*background-image:var\(--wash\),var\(--grain\)/.test(flat),
+  "a texture layer sits behind the whole app");
+ok(/html\[data-theme="dark"\]\{[^}]*--grain:url\("data:image\/svg\+xml/.test(flat),
+  "dark has its own grain");
+ok(/html\[data-theme="light"\]\{[^}]*--grain:url\("data:image\/svg\+xml/.test(flat),
+  "light has its own grain");
+ok(/html\[data-theme="light"\]\{[^}]*--wash:repeating-linear-gradient/.test(flat),
+  "light adds paper fibres");
+/* An xmlns inside the inline SVG is a namespace, not a fetch. What must never
+   appear is a url() pointing off the device. */
+ok(!/url\(["']?https?:/.test(flat),
+  "nothing is fetched from the network (the app must work with it off)");
+ok(/html\{background:var\(--bg\)/.test(flat),
+  "the background colour stays on html so overscroll never flashes");
 ok(/html\[data-theme="dark"\]\{[^}]*--bg:/.test(html), "dark colour tokens live in the theme block, not :root");
 ok(/html\[data-theme="light"\]\{[^}]*--bg:/.test(html), "light colour tokens defined");
 ok(!/:root\{[^}]*--bg:/.test(html), "no colour token leaks onto :root");

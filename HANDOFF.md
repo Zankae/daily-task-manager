@@ -98,6 +98,16 @@ Without a version bump, browsers keep serving the cached old app.
   repeat. Every kind still carries an explicit "make it a one-off / make it repeat"
   escape hatch, so narrowing the surface never takes control away. Derive this from the
   task itself (`bucket`, `repeat.kind`), never from which tab happens to be open.
+- **Never re-render while a native picker is open.** `<input type="time">` and
+  `type="date"` open a popover anchored to that element; rebuilding the editor on `change`
+  destroys the input and dismisses the popover, so setting the hour closed the wheel
+  before the minutes could be set. `pickerInput()` takes the value on `input`/`change`
+  and saves it, but only calls back to re-render on `blur`. A test asserts the input is
+  the *same element* after spinning both wheels.
+- **A task being edited stays in the list.** Changing a rule can make a task no longer
+  due today, or move it between Tasks groups. `renderToday()` and `renderTasks()` both
+  keep `ui.open` on screen regardless, so the thing being edited never vanishes
+  mid-sentence; it drops off once closed.
 - **Editor sections are boxes, not divider lines.** Each is an `.esec` a step lighter than
   the row behind it (`--panel2` on `--panel`), with its controls a step lighter again
   (`--panel3`) so they lift off it. Never render an `.esec` with no title or no content —

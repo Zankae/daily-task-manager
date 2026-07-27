@@ -57,7 +57,8 @@ Tapping a task opens it in place, and **it only offers what applies to that task
 | | |
 |---|---|
 | **Title, notes** | Typed straight in, saved as you type. The notes box stays hidden until you ask for it. |
-| **How often** *(repeating)* | Every day, Weekly (pick days), Monthly (day of the month), or Interval (every *n* days/weeks/months, counted from the last time you did it). No date field — a repeating task hasn't got one. |
+| **How often** *(repeating)* | Every day, Weekly (pick days), Monthly, or Interval (every *n* days/weeks/months, counted from the last time you did it). No date field — a repeating task hasn't got one. |
+| **Monthly** | Either a date — day 15 of the month — or a weekday: *the first Saturday*, *the last Friday*. The second is the one a date cannot express, and it shows you the next three dates it lands on so you can see it is right. |
 | **When** *(one-off)* | A date. No frequency chooser. |
 | **Not on a day** *(Someday)* | No date, no time, no alarm, no target. A shelved task has no day for any of that to attach to. |
 | **Time and alarm** | A clock time; the alarm switch appears once there is a time for it to ring at. |
